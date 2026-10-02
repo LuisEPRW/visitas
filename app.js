@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.5.1';
+const VERSION_APP = '1.6';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -183,6 +183,20 @@ async function configurarNube() {
     if (!valores.repo || !valores.llave) { aviso('Falta el repositorio o la llave.', true); return; }
     try {
       await N.probarNube(valores.repo, valores.llave);
+    } catch (e) {
+      aviso(mensajeError(e), true);
+      return;
+    }
+  }
+  // Móvil recién instalado (sin visitas ni agenda): se trae lo que ya hay en
+  // GitHub, por ejemplo la agenda que le hemos preparado.
+  if (valores.modo === 'subir' && !datos.visitas.length && !datos.agenda.length) {
+    try {
+      const texto = await N.bajarNube(valores.repo, valores.llave, ARCHIVO_NUBE);
+      if (texto) {
+        datos = D.leerCopia(texto);
+        await escribirBD(datos, 'datos');
+      }
     } catch (e) {
       aviso(mensajeError(e), true);
       return;
