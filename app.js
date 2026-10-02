@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.8';
+const VERSION_APP = '1.8.1';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
