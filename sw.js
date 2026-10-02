@@ -1,7 +1,7 @@
-// Guarda la app en el teléfono para que abra sin cobertura.
-// Al cambiar cualquier fichero de la app hay que subir este número de versión;
-// si no, los teléfonos seguirán usando la copia antigua.
-const CACHE = 'visitas-luis-v10';
+// Guarda la app en el teléfono para que abra sin cobertura. Con cobertura
+// siempre trae la última versión publicada, así que no hace falta tocar
+// este número al cambiar la app.
+const CACHE = 'visitas-luis-v12';
 const FICHEROS = [
   './', './index.html', './estilos.css', './datos.js', './app.js', './manifest.webmanifest',
   './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png',
@@ -25,8 +25,23 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    caches.match(e.request, { ignoreSearch: true })
-      .then((guardado) => guardado || fetch(e.request)),
-  );
+  e.respondWith(primeroLaRed(e.request));
 });
+
+// Primero la red, para que los cambios lleguen solos al abrir la app. Sin
+// cobertura, o si tarda más de 4 segundos, se usa la copia del teléfono.
+async function primeroLaRed(peticion) {
+  const cache = await caches.open(CACHE);
+  const red = fetch(peticion.url, { cache: 'no-store' }).then((respuesta) => {
+    if (respuesta.ok) cache.put(peticion, respuesta.clone());
+    return respuesta;
+  });
+  const espera = new Promise((ok) => setTimeout(ok, 4000));
+  try {
+    const respuesta = await Promise.race([red, espera]);
+    if (respuesta && respuesta.ok) return respuesta;
+  } catch (e) {
+    // Sin conexión: se sigue con la copia guardada.
+  }
+  return (await cache.match(peticion, { ignoreSearch: true })) || red;
+}
