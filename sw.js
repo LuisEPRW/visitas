@@ -4,7 +4,7 @@
 const CACHE = 'visitas-luis-v13';
 const FICHEROS = [
   './', './index.html', './estilos.css', './datos.js', './nube.js', './app.js', './manifest.webmanifest',
-  './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png',
+  './iconos/icono-180.png', './iconos/logo-96.png', './iconos/icono-192.png', './iconos/icono-512.png',
 ];
 
 self.addEventListener('install', (e) => {

@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.7.3';
+const VERSION_APP = '1.8';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -1443,7 +1443,8 @@ function pintar() {
     const pantallas = { hoy: pantallaHoy, agenda: pantallaAgenda, pendientes: pantallaPendientes, consultar: pantallaConsultar, ajustes: pantallaAjustes };
     html = (pantallas[nombre] || pantallaHoy)();
   }
-  main.innerHTML = bandaNube() + html;
+  const marca = enFormulario ? '' : '<div class="marca"><img src="iconos/logo-96.png" alt=""><span>Eladio Piñeiro · Visitas</span></div>';
+  main.innerHTML = bandaNube() + marca + html;
   document.body.classList.toggle('en-formulario', enFormulario);
   const pestana = enFormulario ? '' : (nombre || 'hoy');
   document.querySelectorAll('#pestanas a').forEach((a) => a.classList.toggle('activa', a.dataset.pestana === pestana));
