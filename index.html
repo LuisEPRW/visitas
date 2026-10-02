@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Visitas · Eladio Piñeiro</title>
+  <meta name="theme-color" content="#0f5257">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Visitas">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="iconos/icono-180.png">
+  <link rel="icon" href="iconos/icono-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <main id="pantalla"><p class="cargando">Cargando…</p></main>
+
+  <nav id="pestanas">
+    <a href="#hoy" data-pestana="hoy">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2zm-2 8h14v10H5z"/></svg>
+      Hoy
+    </a>
+    <a href="#agenda" data-pestana="agenda">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2H4zm0 5h10v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg>
+      Agenda
+    </a>
+    <a href="#pendientes" data-pestana="pendientes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 5v5.6l4 2.4-1 1.7-5-3V7z"/></svg>
+      Pendientes<span id="globo" hidden></span>
+    </a>
+    <a href="#consultar" data-pestana="consultar">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 0 1 5.6 11.2l5.6 5.6-1.4 1.4-5.6-5.6A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>
+      Consultar
+    </a>
+    <a href="#ajustes" data-pestana="ajustes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z"/></svg>
+      Ajustes
+    </a>
+  </nav>
+
+  <dialog id="dialogo"></dialog>
+  <div id="aviso" role="status" aria-live="polite"></div>
+
+  <script src="datos.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
