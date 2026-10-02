@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.7';
+const VERSION_APP = '1.7.1';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -163,19 +163,23 @@ function sincronizar() {
   if (conexion.modo === 'subir') { subirAhora(); revisarBuzon(); } else bajarAhora();
 }
 
+// «hoy a las 16:47»; si no es de hoy, «el 01/10 a las 16:47».
 function horaCorta(iso) {
-  return iso ? new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  if (!iso) return '';
+  const fecha = new Date(iso);
+  const hora = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return D.aISO(fecha) === D.hoyISO() ? `hoy a las ${hora}` : `el ${D.fechaES(D.aISO(fecha)).slice(0, 5)} a las ${hora}`;
 }
 
 function textoEstadoNube() {
   if (conexion.modo === 'subir') {
     if (conexion.error) return `⚠ ${conexion.error}${conexion.pendiente ? ' Hay cambios sin subir.' : ''}`;
     if (conexion.pendiente) return 'Hay cambios pendientes de subir (se suben solos con cobertura).';
-    return conexion.ultima ? `Todo subido. Última subida: ${horaCorta(conexion.ultima)}.` : 'Conectada.';
+    return conexion.ultima ? `Todo subido (${horaCorta(conexion.ultima)}).` : 'Conectada.';
   }
   if (conexion.modo === 'ver') {
     if (conexion.error) return `⚠ ${conexion.error}`;
-    return `Viendo los datos de Luis. Comprobado: ${horaCorta(conexion.ultima) || '—'}.`;
+    return `Viendo los datos de Luis (comprobado ${horaCorta(conexion.ultima) || '—'}).`;
   }
   return 'Desactivada.';
 }
