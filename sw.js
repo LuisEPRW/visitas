@@ -1,7 +1,7 @@
 // Guarda la app en el teléfono para que abra sin cobertura. Con cobertura
 // siempre trae la última versión publicada, así que no hace falta tocar
 // este número al cambiar la app.
-const CACHE = 'visitas-luis-v12';
+const CACHE = 'visitas-luis-v13';
 const FICHEROS = [
   './', './index.html', './estilos.css', './datos.js', './nube.js', './app.js', './manifest.webmanifest',
   './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png',
@@ -32,7 +32,9 @@ self.addEventListener('fetch', (e) => {
 // cobertura, o si tarda más de 4 segundos, se usa la copia del teléfono.
 async function primeroLaRed(peticion) {
   const cache = await caches.open(CACHE);
-  const red = fetch(peticion.url, { cache: 'no-store' }).then((respuesta) => {
+  // La marca de tiempo salta también la caché de GitHub (hasta 10 minutos).
+  const url = peticion.url + (peticion.url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+  const red = fetch(url, { cache: 'no-store' }).then((respuesta) => {
     if (respuesta.ok) cache.put(peticion, respuesta.clone());
     return respuesta;
   });
