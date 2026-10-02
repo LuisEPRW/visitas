@@ -3,7 +3,7 @@
 // este número al cambiar la app.
 const CACHE = 'visitas-luis-v12';
 const FICHEROS = [
-  './', './index.html', './estilos.css', './datos.js', './app.js', './manifest.webmanifest',
+  './', './index.html', './estilos.css', './datos.js', './nube.js', './app.js', './manifest.webmanifest',
   './iconos/icono-180.png', './iconos/icono-192.png', './iconos/icono-512.png',
 ];
 

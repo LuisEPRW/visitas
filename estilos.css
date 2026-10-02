@@ -386,3 +386,15 @@ details.mas-filtros[open] > summary::before { content: "▾ "; }
 details.mas-filtros[open] > summary { margin-bottom: 8px; }
 .segmento { scrollbar-width: none; }
 .segmento::-webkit-scrollbar { display: none; }
+
+/* ---------- Modo «solo ver» (datos de Luis desde GitHub) ---------- */
+
+.banda-nube {
+  background: var(--primario-claro);
+  color: var(--primario);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}

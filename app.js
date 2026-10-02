@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.4';
+const VERSION_APP = '1.5';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -37,20 +37,163 @@ function leerDatos() {
   });
 }
 
+function escribirBD(valor, clave) {
+  return new Promise((ok, mal) => {
+    const tx = bd.transaction('estado', 'readwrite');
+    tx.objectStore('estado').put(valor, clave);
+    tx.oncomplete = ok;
+    tx.onerror = () => mal(tx.error);
+    tx.onabort = () => mal(tx.error);
+  });
+}
+
 async function guardar() {
   try {
-    await new Promise((ok, mal) => {
-      const tx = bd.transaction('estado', 'readwrite');
-      tx.objectStore('estado').put(datos, 'datos');
-      tx.oncomplete = ok;
-      tx.onerror = () => mal(tx.error);
-      tx.onabort = () => mal(tx.error);
-    });
+    await escribirBD(datos, 'datos');
+    cambioParaSubir();
     return true;
   } catch (e) {
     aviso('¡No se ha podido guardar! ' + (e && e.message ? e.message : ''), true);
     return false;
   }
+}
+
+// ---------- Copia en GitHub (la parte de GitHub está en nube.js) ----------
+// El móvil de Luis sube cada cambio; los demás aparatos en «solo ver» bajan
+// lo de Luis cada 30 segundos. La configuración (con la llave) se guarda
+// aparte de los datos, así que no sale en las copias ni en el Excel.
+
+const ARCHIVO_NUBE = 'datos.json';
+let conexion = { repo: 'LuisEPRW/visitas-datos', llave: '', modo: 'no', sha: '', pendiente: false, ultima: '', error: '' };
+let temporizadorSubida = null;
+let subiendo = false;
+let cambiosLocales = 0;
+let ultimoTextoBajado = '';
+
+function leerConexion() {
+  return new Promise((ok) => {
+    const peticion = bd.transaction('estado').objectStore('estado').get('conexion');
+    peticion.onsuccess = () => ok(peticion.result || null);
+    peticion.onerror = () => ok(null);
+  });
+}
+
+async function guardarConexion() {
+  try { await escribirBD(conexion, 'conexion'); } catch (e) { /* no es grave: se reintenta */ }
+}
+
+function cambioParaSubir() {
+  cambiosLocales++;
+  if (conexion.modo !== 'subir') return;
+  conexion.pendiente = true;
+  guardarConexion();
+  clearTimeout(temporizadorSubida);
+  temporizadorSubida = setTimeout(subirAhora, 3000);
+}
+
+function mensajeError(e) {
+  return e instanceof TypeError ? 'Sin conexión: se sube en cuanto haya cobertura.' : (e.message || 'Error al conectar con GitHub.');
+}
+
+async function subirAhora() {
+  if (conexion.modo !== 'subir' || !conexion.pendiente || subiendo || !navigator.onLine) return;
+  subiendo = true;
+  const antes = cambiosLocales;
+  try {
+    const sha = conexion.sha || await N.shaNube(conexion.repo, conexion.llave, ARCHIVO_NUBE);
+    conexion.sha = await N.subirNube(conexion.repo, conexion.llave, ARCHIVO_NUBE, D.crearCopia(datos), sha);
+    conexion.pendiente = cambiosLocales !== antes;
+    conexion.ultima = new Date().toISOString();
+    conexion.error = '';
+  } catch (e) {
+    conexion.error = mensajeError(e);
+  }
+  subiendo = false;
+  await guardarConexion();
+  mostrarEstadoNube();
+  if (conexion.pendiente && !conexion.error) subirAhora();
+}
+
+async function bajarAhora() {
+  if (conexion.modo !== 'ver' || !navigator.onLine) return;
+  try {
+    const texto = await N.bajarNube(conexion.repo, conexion.llave, ARCHIVO_NUBE);
+    conexion.ultima = new Date().toISOString();
+    conexion.error = texto === null ? 'Luis todavía no ha subido nada.' : '';
+    if (texto && texto !== ultimoTextoBajado) {
+      datos = D.leerCopia(texto);
+      ultimoTextoBajado = texto;
+      await escribirBD(datos, 'datos');
+      if (!borrador && !document.getElementById('dialogo').open) repintar();
+    }
+  } catch (e) {
+    conexion.error = mensajeError(e);
+  }
+  await guardarConexion();
+  mostrarEstadoNube();
+}
+
+function sincronizar() {
+  if (conexion.modo === 'subir') subirAhora(); else bajarAhora();
+}
+
+function horaCorta(iso) {
+  return iso ? new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+}
+
+function textoEstadoNube() {
+  if (conexion.modo === 'subir') {
+    if (conexion.error) return `⚠ ${conexion.error}${conexion.pendiente ? ' Hay cambios sin subir.' : ''}`;
+    if (conexion.pendiente) return 'Hay cambios pendientes de subir (se suben solos con cobertura).';
+    return conexion.ultima ? `Todo subido. Última subida: ${horaCorta(conexion.ultima)}.` : 'Conectada.';
+  }
+  if (conexion.modo === 'ver') {
+    if (conexion.error) return `⚠ ${conexion.error}`;
+    return `Viendo los datos de Luis. Comprobado: ${horaCorta(conexion.ultima) || '—'}.`;
+  }
+  return 'Desactivada.';
+}
+
+function bandaNube() {
+  if (conexion.modo !== 'ver') return '';
+  return `<div id="banda-nube" class="banda-nube">${esc(textoEstadoNube())} Lo que cambies aquí no le llega a Luis.</div>`;
+}
+
+function mostrarEstadoNube() {
+  const banda = document.getElementById('banda-nube');
+  if (banda) banda.textContent = textoEstadoNube() + ' Lo que cambies aquí no le llega a Luis.';
+  const estado = document.getElementById('estado-nube');
+  if (estado) estado.textContent = textoEstadoNube();
+}
+
+async function configurarNube() {
+  const modos = [
+    ['subir', 'Es el móvil de Luis: subir lo que apunte'],
+    ['ver', 'Solo ver lo de Luis (ordenador, tablet…)'],
+    ['no', 'Desactivada'],
+  ];
+  const cuerpo = campo('Repositorio privado', 'repo', conexion.repo) +
+    campo('Llave de GitHub', 'llave', conexion.llave, 'type="password"') +
+    `<label>Este aparato<select name="modo">${modos.map(([k, t]) => `<option value="${k}"${(conexion.modo === 'no' ? 'subir' : conexion.modo) === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+    <p class="gris pequeno">En «Solo ver», lo que hay en este aparato se sustituye por lo de Luis y se actualiza solo cada 30 segundos.</p>`;
+  const { boton, valores } = await abrirDialogo('Copia en GitHub', cuerpo,
+    [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }]);
+  if (boton !== 'guardar') return;
+  if (valores.modo !== 'no') {
+    if (!valores.repo || !valores.llave) { aviso('Falta el repositorio o la llave.', true); return; }
+    try {
+      await N.probarNube(valores.repo, valores.llave);
+    } catch (e) {
+      aviso(mensajeError(e), true);
+      return;
+    }
+  }
+  conexion = { repo: valores.repo, llave: valores.llave, modo: valores.modo, sha: '', pendiente: valores.modo === 'subir', ultima: '', error: '' };
+  ultimoTextoBajado = '';
+  await guardarConexion();
+  aviso(valores.modo === 'no' ? 'Copia en GitHub desactivada' : 'Conectado a GitHub');
+  repintar();
+  sincronizar();
 }
 
 // ---------- Utilidades de pantalla ----------
@@ -724,6 +867,13 @@ function pantallaAjustes() {
     </section>
 
     <section class="tarjeta">
+      <h2>Copia en GitHub</h2>
+      <p class="pequeno" id="estado-nube">${esc(textoEstadoNube())}</p>
+      <button class="ancho" data-accion="configurarNube">${conexion.modo === 'no' ? 'Activar' : 'Cambiar'}</button>
+      ${conexion.modo !== 'no' ? `<button class="ancho" data-accion="sincronizarYa">${conexion.modo === 'subir' ? 'Subir ahora' : 'Actualizar ahora'}</button>` : ''}
+    </section>
+
+    <section class="tarjeta">
       <h2>Distribuidores y comerciales</h2>
       ${distribuidores || '<p class="vacio">Todavía no hay distribuidores.</p>'}
       <p></p>
@@ -1092,6 +1242,13 @@ const acciones = {
   exportarConsulta() { entregarFichero(`visitas-luis-filtradas-${D.hoyISO()}.csv`, D.exportarCSV(datos, visitasConsultadas()), 'text/csv'); },
 
   copiaJSON() { copiaJSON(); },
+  async configurarNube() { await configurarNube(); },
+  sincronizarYa() {
+    if (conexion.modo === 'subir') conexion.pendiente = true;
+    conexion.error = '';
+    sincronizar();
+    aviso(conexion.modo === 'subir' ? 'Subiendo…' : 'Actualizando…');
+  },
   exportarCSV() { entregarFichero(`visitas-luis-${D.hoyISO()}.csv`, D.exportarCSV(datos), 'text/csv'); },
   async editarDistribuidor(el) { await editarDistribuidor(el.dataset.id); repintar(); },
   async editarCliente(el) { await editarCliente(el.dataset.id); repintar(); },
@@ -1228,7 +1385,7 @@ function pintar() {
     const pantallas = { hoy: pantallaHoy, agenda: pantallaAgenda, pendientes: pantallaPendientes, consultar: pantallaConsultar, ajustes: pantallaAjustes };
     html = (pantallas[nombre] || pantallaHoy)();
   }
-  main.innerHTML = html;
+  main.innerHTML = bandaNube() + html;
   document.body.classList.toggle('en-formulario', enFormulario);
   const pestana = enFormulario ? '' : (nombre || 'hoy');
   document.querySelectorAll('#pestanas a').forEach((a) => a.classList.toggle('activa', a.dataset.pestana === pestana));
@@ -1262,9 +1419,14 @@ async function arrancar() {
     await guardar();
   }
   if (!Array.isArray(datos.agenda)) datos.agenda = [];
+  conexion = Object.assign(conexion, await leerConexion());
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js');
   pintar();
+  sincronizar();
+  setInterval(sincronizar, 30000);
+  window.addEventListener('online', sincronizar);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sincronizar(); });
 }
 
 arrancar();
