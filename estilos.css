@@ -81,6 +81,25 @@ select {
   padding-right: 34px;
 }
 textarea { min-height: 80px; resize: vertical; }
+/* Que ningún campo sea más ancho que su tarjeta (el iPhone da a las fechas
+   un ancho mínimo propio y descuadraba toda la pantalla). */
+input, select, textarea { min-width: 0; max-width: 100%; }
+.dos-columnas > * { min-width: 0; }
+/* Fechas: mismo aspecto que los demás campos (el iPhone las centraba y las
+   hacía más altas), con un calendario pequeño a la derecha. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: left;
+  line-height: 26px;
+  padding-right: 44px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236b6b6b' d='M7 2v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2zm-2 8h14v10H5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: calc(100% - 14px) 50%;
+  background-size: 20px 20px;
+}
+input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; width: 32px; height: 32px; margin-right: -32px; cursor: pointer; }
 input[type="checkbox"] { display: inline-block; width: 26px; height: 26px; min-height: 0; vertical-align: middle; margin: 0 8px 0 0; }
 .casilla { display: flex; align-items: center; font-weight: 600; min-height: 48px; margin: 4px 0 0; }
 

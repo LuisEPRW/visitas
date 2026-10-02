@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.7.1';
+const VERSION_APP = '1.7.2';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -311,7 +311,7 @@ function tarjetaVisita(v, conFecha) {
   return `<a class="visita ${v.resultado}" href="#visita/${esc(v.id)}">
     <div class="fila1"><strong>${esc(cliente.nombre || '(cliente borrado)')}</strong><span class="etiqueta ${v.resultado}">${esc(D.RESULTADOS[v.resultado])}</span></div>
     ${partes.join('')}
-    <div class="gris">${conFecha ? esc(D.fechaES(v.fecha)) + ' · ' : ''}${esc(cliente.poblacion || '')} · con ${esc(comercial)} (${esc(nombreDe('distribuidores', v.distribuidorId))})</div>
+    <div class="gris">${esc([conFecha && D.fechaES(v.fecha), cliente.poblacion, `con ${comercial} (${nombreDe('distribuidores', v.distribuidorId)})`].filter(Boolean).join(' · '))}</div>
   </a>`;
 }
 
@@ -379,7 +379,7 @@ function pantallaHoy() {
     </section>
     <button class="principal grande" data-accion="nuevaVisita">+ Nueva visita</button>
     <p></p>
-    ${urgentes ? `<a class="tarjeta alerta" href="#pendientes">Tienes ${plural(urgentes, 'pendiente', 'pendientes')} para hoy o atrasados ›</a>` : ''}
+    ${urgentes ? `<a class="tarjeta alerta" href="#pendientes">Tienes ${plural(urgentes, 'pendiente', 'pendientes')} para hoy o atrasados&nbsp;›</a>` : ''}
     <h2>Visitas de hoy (${visitasHoy.length})</h2>
     ${visitasHoy.length ? visitasHoy.map((v) => tarjetaVisita(v, false)).join('') : '<p class="vacio">Aún no has apuntado ninguna visita hoy.</p>'}
   `;
@@ -691,7 +691,7 @@ function pantallaPendientes() {
       <a class="cuerpo" href="#visita/${esc(v.id)}">
         <div class="fila1" style="display:flex;justify-content:space-between;gap:8px"><strong>${esc(cliente.nombre || '(cliente borrado)')}</strong>${etiqueta}</div>
         <div class="detalle"><b>${esc(D.TIPOS_PENDIENTE[p.tipo])}:</b> ${esc(que)}</div>
-        <div class="gris pequeno">${esc(cliente.poblacion || '')} · con ${esc(nombreDe('comerciales', v.comercialId, 'sin comercial'))} (${esc(nombreDe('distribuidores', v.distribuidorId))})</div>
+        <div class="gris pequeno">${esc([cliente.poblacion, `con ${nombreDe('comerciales', v.comercialId, 'sin comercial')} (${nombreDe('distribuidores', v.distribuidorId)})`].filter(Boolean).join(' · '))}</div>
         <div class="gris pequeno">Visita del ${esc(D.fechaES(v.fecha))} · previsto para el ${esc(D.fechaES(p.fechaPrevista))}</div>
       </a>
       ${botones}
