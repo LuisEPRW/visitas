@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.6';
+const VERSION_APP = '1.7';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -133,8 +133,34 @@ async function bajarAhora() {
   mostrarEstadoNube();
 }
 
+// Lo que el jefe deja para Luis en GitHub (para-luis.json: lista de paquetes
+// de añadidos). Solo lo mira el móvil de Luis; cada paquete se aplica una vez.
+let revisandoBuzon = false;
+async function revisarBuzon() {
+  if (conexion.modo !== 'subir' || revisandoBuzon || !navigator.onLine) return;
+  revisandoBuzon = true;
+  try {
+    const texto = await N.bajarNube(conexion.repo, conexion.llave, 'para-luis.json');
+    const paquetes = texto ? JSON.parse(texto) : [];
+    let nuevos = 0;
+    let aplicado = false;
+    for (const paquete of Array.isArray(paquetes) ? paquetes : []) {
+      if (!D.esPaquete(paquete)) continue;
+      const resultado = D.aplicarPaquete(datos, paquete);
+      if (resultado) { aplicado = true; nuevos += resultado.nuevos; }
+    }
+    if (aplicado && await guardar()) {
+      aviso(`Han llegado ${plural(nuevos, 'distribuidor nuevo', 'distribuidores nuevos')}.`);
+      if (!borrador && !document.getElementById('dialogo').open) repintar();
+    }
+  } catch (e) {
+    // Sin conexión o sin nada que recoger: se vuelve a mirar en la próxima vuelta.
+  }
+  revisandoBuzon = false;
+}
+
 function sincronizar() {
-  if (conexion.modo === 'subir') subirAhora(); else bajarAhora();
+  if (conexion.modo === 'subir') { subirAhora(); revisarBuzon(); } else bajarAhora();
 }
 
 function horaCorta(iso) {
@@ -863,7 +889,7 @@ function pantallaAjustes() {
   const distribuidores = ordenar(datos.distribuidores).map((d) => {
     const nombres = comercialesDe(d.id).map((c) => c.nombre).join(', ') || 'sin comerciales';
     return `<button class="fila-ajuste" data-accion="editarDistribuidor" data-id="${esc(d.id)}">
-      <span>${esc(d.nombre)}<small>${esc([d.provincia, d.zona].filter(Boolean).join(' · '))}${d.provincia || d.zona ? ' — ' : ''}${esc(nombres)}</small></span></button>`;
+      <span>${esc(d.nombre)}<small>${esc([d.provincia, d.zona, d.pais].filter(Boolean).join(' · '))}${d.provincia || d.zona || d.pais ? ' — ' : ''}${esc(nombres)}</small></span></button>`;
   }).join('');
   const vinos = datos.vinos.map((v) => `<button class="fila-ajuste" data-accion="editarVino" data-id="${esc(v.id)}">
     <span>${esc(v.nombre)}${v.activo ? '' : '<small>oculto en la lista</small>'}</span></button>`).join('');
@@ -968,6 +994,8 @@ async function editarDistribuidor(id) {
   const filas = comerciales.map(filaComercial).join('') + filaComercial({ id: 'nuevo1', nombre: '', telefono: '' });
   const cuerpo = campo('Nombre del distribuidor', 'nombre', d.nombre) +
     `<div class="dos-columnas">${campo('Provincia', 'provincia', d.provincia, 'list="lista-provincias"')}${campo('Zona que cubre', 'zona', d.zona, 'list="lista-zonas"')}</div>
+    ${campo('País (si no es España)', 'pais', d.pais)}
+    <label>Contactos<textarea name="contactos" placeholder="Nombre <correo>; …">${esc(d.contactos || '')}</textarea></label>
     <h3>Comerciales</h3>
     <div id="filas-comerciales">${filas}</div>
     <button type="button" class="ancho" data-accion="otraFilaComercial">+ Otro comercial</button>
@@ -992,7 +1020,7 @@ async function editarDistribuidor(id) {
   }
   if (boton !== 'guardar') return null;
   if (!valores.nombre) { aviso('Falta el nombre del distribuidor.', true); return null; }
-  Object.assign(d, { nombre: valores.nombre, provincia: valores.provincia, zona: valores.zona });
+  Object.assign(d, { nombre: valores.nombre, provincia: valores.provincia, zona: valores.zona, pais: valores.pais, contactos: valores.contactos });
   if (esNuevo) datos.distribuidores.push(d);
 
   const noBorrables = [];
@@ -1181,9 +1209,21 @@ async function importar(input) {
   const fichero = input.files && input.files[0];
   input.value = '';
   if (!fichero) return;
+  const texto = await fichero.text();
+  // Un fichero de «añadidos» (p. ej. distribuidores nuevos) se suma sin borrar nada.
+  let paquete = null;
+  try { paquete = JSON.parse(texto.replace(/^\uFEFF/, '')); } catch (e) { /* lo dirá leerCopia */ }
+  if (D.esPaquete(paquete)) {
+    if (!confirm(`Vas a añadir ${plural(paquete.distribuidores.length, 'distribuidor', 'distribuidores')}. No se borra nada. ¿Seguir?`)) return;
+    const resultado = D.aplicarPaquete(datos, paquete);
+    if (!resultado) { aviso('Esto ya estaba añadido.'); return; }
+    if (await guardar()) aviso(`Añadidos ${resultado.nuevos} distribuidores nuevos; ${resultado.actualizados} ya los tenías.`);
+    pintar();
+    return;
+  }
   let nuevos;
   try {
-    nuevos = D.leerCopia(await fichero.text());
+    nuevos = D.leerCopia(texto);
   } catch (e) {
     aviso(e.message, true);
     return;

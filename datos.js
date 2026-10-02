@@ -373,6 +373,44 @@ function agendaPasada(datos, hoy) {
   return datos.agenda.filter((s) => s.fecha && s.fecha < hoy).sort(ordenAgenda).reverse();
 }
 
+// ---------- Añadidos que manda el jefe (sin borrar nada) ----------
+// Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...] }.
+// Cada distribuidor: { nombre, otrosNombres, enAppComo, provincia, zona, pais, contactos }.
+// Si ya existe (por nombre, por enAppComo o por otrosNombres) solo se rellenan
+// los huecos y se añaden los contactos que falten; si no, se crea.
+
+function esPaquete(obj) {
+  return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' && Array.isArray(obj.distribuidores);
+}
+
+function aplicarPaquete(datos, paquete) {
+  const aplicados = datos.ajustes.paquetesAplicados || [];
+  if (aplicados.includes(paquete.id)) return null;
+  const resultado = { nuevos: 0, actualizados: 0 };
+  for (const nuevo of paquete.distribuidores) {
+    const nombres = [nuevo.nombre, nuevo.enAppComo, ...String(nuevo.otrosNombres || '').split('/')]
+      .map(normalizar).filter(Boolean);
+    let d = datos.distribuidores.find((x) => nombres.includes(normalizar(x.nombre)));
+    if (!d) {
+      d = { id: nuevoId(), nombre: nuevo.nombre, provincia: '', zona: '' };
+      datos.distribuidores.push(d);
+      resultado.nuevos++;
+    } else {
+      resultado.actualizados++;
+    }
+    for (const campo of ['provincia', 'zona', 'pais']) {
+      if (!d[campo] && nuevo[campo]) d[campo] = nuevo[campo];
+    }
+    const contactos = String(d.contactos || '').split(';').map((c) => c.trim()).filter(Boolean);
+    for (const c of String(nuevo.contactos || '').split(';').map((x) => x.trim()).filter(Boolean)) {
+      if (!contactos.some((y) => normalizar(y) === normalizar(c))) contactos.push(c);
+    }
+    if (contactos.length) d.contactos = contactos.join('; ');
+  }
+  datos.ajustes.paquetesAplicados = [...aplicados, paquete.id];
+  return resultado;
+}
+
 // ---------- Datos de ejemplo ----------
 
 function hayEjemplo(datos) {
@@ -452,6 +490,6 @@ const D = {
   normalizar, datosVacios, porId, nombreVino, nombreConAnada, ultimaAnada, describirLineas, pendientesAbiertas, pendientesCerradas, filtrarVisitas,
   totales, agrupar, buscarClientes, clientesRecientes, valoresUsados, exportarCSV, celdaCSV, crearCopia, leerCopia,
   hayEjemplo, cargarEjemplo, borrarEjemplo, guardarVisita, borrarVisita, descartarPendiente, reabrirPendiente,
-  posponerPendiente, agendaDelDia, agendaProxima, agendaPasada,
+  posponerPendiente, esPaquete, aplicarPaquete, agendaDelDia, agendaProxima, agendaPasada,
 };
 if (typeof module !== 'undefined') module.exports = D;
