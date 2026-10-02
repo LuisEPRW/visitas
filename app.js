@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.8.2';
+const VERSION_APP = '1.8.3';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -179,19 +179,25 @@ function textoEstadoNube() {
   }
   if (conexion.modo === 'ver') {
     if (conexion.error) return `⚠ ${conexion.error}`;
-    return `Viendo los datos de Luis (comprobado ${horaCorta(conexion.ultima) || '—'}).`;
+    return `Viendo los datos de Luis (comprobado ${horaCorta(conexion.ultima) || '—'}). Lo que cambies en este aparato no le llega a Luis.`;
   }
   return 'Desactivada.';
 }
 
+// Una sola línea arriba en los aparatos que solo miran lo de Luis.
+function textoBanda() {
+  if (conexion.error) return `⚠ ${conexion.error}`;
+  return `Viendo lo de Luis · ${horaCorta(conexion.ultima) || 'conectando…'}`;
+}
+
 function bandaNube() {
   if (conexion.modo !== 'ver') return '';
-  return `<div id="banda-nube" class="banda-nube">${esc(textoEstadoNube())} Lo que cambies aquí no le llega a Luis.</div>`;
+  return `<div id="banda-nube" class="banda-nube">${esc(textoBanda())}</div>`;
 }
 
 function mostrarEstadoNube() {
   const banda = document.getElementById('banda-nube');
-  if (banda) banda.textContent = textoEstadoNube() + ' Lo que cambies aquí no le llega a Luis.';
+  if (banda) banda.textContent = textoBanda();
   const estado = document.getElementById('estado-nube');
   if (estado) estado.textContent = textoEstadoNube();
 }

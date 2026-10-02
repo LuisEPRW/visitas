@@ -422,6 +422,9 @@ details.mas-filtros[open] > summary { margin-bottom: 8px; }
   margin-bottom: 10px;
   font-size: 15px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---------- Marca ---------- */
