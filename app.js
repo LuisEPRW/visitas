@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.8.3';
+const VERSION_APP = '1.8.4';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -92,7 +92,23 @@ function cambioParaSubir() {
 }
 
 function mensajeError(e) {
-  return e instanceof TypeError ? 'Sin conexión: se sube en cuanto haya cobertura.' : (e.message || 'Error al conectar con GitHub.');
+  if (!(e instanceof TypeError)) return e.message || 'Error al conectar con GitHub.';
+  return conexion.modo === 'ver' ? 'Sin conexión: se actualiza en cuanto haya cobertura.' : 'Sin conexión: lo apuntado se sube en cuanto haya cobertura.';
+}
+
+// Se guarda la hora del fallo para que se vea si el aviso es de ahora o antiguo.
+function ponerError(e) {
+  conexion.error = mensajeError(e);
+  conexion.errorEl = new Date().toISOString();
+}
+
+function quitarError() {
+  conexion.error = '';
+  conexion.errorEl = '';
+}
+
+function textoError() {
+  return `⚠ ${conexion.errorEl ? '(' + horaCorta(conexion.errorEl) + ') ' : ''}${conexion.error}`;
 }
 
 async function subirAhora() {
@@ -104,9 +120,9 @@ async function subirAhora() {
     conexion.sha = await N.subirNube(conexion.repo, conexion.llave, ARCHIVO_NUBE, D.crearCopia(datos), sha);
     conexion.pendiente = cambiosLocales !== antes;
     conexion.ultima = new Date().toISOString();
-    conexion.error = '';
+    quitarError();
   } catch (e) {
-    conexion.error = mensajeError(e);
+    ponerError(e);
   }
   subiendo = false;
   await guardarConexion();
@@ -119,7 +135,7 @@ async function bajarAhora() {
   try {
     const texto = await N.bajarNube(conexion.repo, conexion.llave, ARCHIVO_NUBE);
     conexion.ultima = new Date().toISOString();
-    conexion.error = texto === null ? 'Luis todavía no ha subido nada.' : '';
+    if (texto === null) { conexion.error = 'Luis todavía no ha subido nada.'; conexion.errorEl = ''; } else quitarError();
     if (texto && texto !== ultimoTextoBajado) {
       datos = D.leerCopia(texto);
       ultimoTextoBajado = texto;
@@ -127,7 +143,7 @@ async function bajarAhora() {
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
   } catch (e) {
-    conexion.error = mensajeError(e);
+    ponerError(e);
   }
   await guardarConexion();
   mostrarEstadoNube();
@@ -153,6 +169,12 @@ async function revisarBuzon() {
       aviso(`Han llegado ${plural(nuevos, 'distribuidor nuevo', 'distribuidores nuevos')}.`);
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
+    // Si GitHub contesta, hay cobertura: fuera el aviso viejo de «sin conexión».
+    if (conexion.error && !conexion.pendiente) {
+      quitarError();
+      await guardarConexion();
+      mostrarEstadoNube();
+    }
   } catch (e) {
     // Sin conexión o sin nada que recoger: se vuelve a mirar en la próxima vuelta.
   }
@@ -173,12 +195,12 @@ function horaCorta(iso) {
 
 function textoEstadoNube() {
   if (conexion.modo === 'subir') {
-    if (conexion.error) return `⚠ ${conexion.error}${conexion.pendiente ? ' Hay cambios sin subir.' : ''}`;
+    if (conexion.error) return `${textoError()}${conexion.pendiente ? ' Hay cambios sin subir.' : ''}`;
     if (conexion.pendiente) return 'Hay cambios pendientes de subir (se suben solos con cobertura).';
     return conexion.ultima ? `Todo subido (${horaCorta(conexion.ultima)}).` : 'Conectada.';
   }
   if (conexion.modo === 'ver') {
-    if (conexion.error) return `⚠ ${conexion.error}`;
+    if (conexion.error) return textoError();
     return `Viendo los datos de Luis (comprobado ${horaCorta(conexion.ultima) || '—'}). Lo que cambies en este aparato no le llega a Luis.`;
   }
   return 'Desactivada.';
@@ -186,7 +208,7 @@ function textoEstadoNube() {
 
 // Una sola línea arriba en los aparatos que solo miran lo de Luis.
 function textoBanda() {
-  if (conexion.error) return `⚠ ${conexion.error}`;
+  if (conexion.error) return textoError();
   return `Viendo lo de Luis · ${horaCorta(conexion.ultima) || 'conectando…'}`;
 }
 
