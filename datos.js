@@ -374,20 +374,26 @@ function agendaPasada(datos, hoy) {
 }
 
 // ---------- Añadidos que manda el jefe (sin borrar nada) ----------
-// Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...] }.
+// Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...], borrarVisitas: [ids] }
+// (cualquiera de las dos listas puede faltar).
 // Cada distribuidor: { nombre, otrosNombres, enAppComo, provincia, zona, pais, contactos }.
 // Si ya existe (por nombre, por enAppComo o por otrosNombres) solo se rellenan
 // los huecos y se añaden los contactos que falten; si no, se crea.
 
 function esPaquete(obj) {
-  return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' && Array.isArray(obj.distribuidores);
+  return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' &&
+    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas));
 }
 
 function aplicarPaquete(datos, paquete) {
   const aplicados = datos.ajustes.paquetesAplicados || [];
   if (aplicados.includes(paquete.id)) return null;
-  const resultado = { nuevos: 0, actualizados: 0 };
-  for (const nuevo of paquete.distribuidores) {
+  const resultado = { nuevos: 0, actualizados: 0, borradas: 0 };
+  // Visitas que el jefe quita (p. ej. apuntadas dos veces por error).
+  for (const id of paquete.borrarVisitas || []) {
+    if (porId(datos.visitas, id)) { borrarVisita(datos, id); resultado.borradas++; }
+  }
+  for (const nuevo of paquete.distribuidores || []) {
     const nombres = [nuevo.nombre, nuevo.enAppComo, ...String(nuevo.otrosNombres || '').split('/')]
       .map(normalizar).filter(Boolean);
     let d = datos.distribuidores.find((x) => nombres.includes(normalizar(x.nombre)));

@@ -433,3 +433,6 @@ details.mas-filtros[open] > summary { margin-bottom: 8px; }
 .marca img { width: 34px; height: 34px; }
 .marca span { color: var(--dorado-texto); font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 h3 { color: var(--dorado-texto); font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+
+.titulo-visita { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.titulo-visita .peligro { min-height: 40px; padding: 6px 14px; }

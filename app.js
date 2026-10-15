@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.8.4';
+const VERSION_APP = '1.9';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -159,14 +159,18 @@ async function revisarBuzon() {
     const texto = await N.bajarNube(conexion.repo, conexion.llave, 'para-luis.json');
     const paquetes = texto ? JSON.parse(texto) : [];
     let nuevos = 0;
+    let borradas = 0;
     let aplicado = false;
     for (const paquete of Array.isArray(paquetes) ? paquetes : []) {
       if (!D.esPaquete(paquete)) continue;
       const resultado = D.aplicarPaquete(datos, paquete);
-      if (resultado) { aplicado = true; nuevos += resultado.nuevos; }
+      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; }
     }
     if (aplicado && await guardar()) {
-      aviso(`Han llegado ${plural(nuevos, 'distribuidor nuevo', 'distribuidores nuevos')}.`);
+      const partes = [];
+      if (nuevos) partes.push(`Han llegado ${plural(nuevos, 'distribuidor nuevo', 'distribuidores nuevos')}.`);
+      if (borradas) partes.push(`Lalo ha quitado ${plural(borradas, 'visita repetida', 'visitas repetidas')}.`);
+      aviso(partes.join(' ') || 'Datos actualizados por Lalo.');
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
     // Si GitHub contesta, hay cobertura: fuera el aviso viejo de «sin conexión».
@@ -353,6 +357,9 @@ function pantallaHoy() {
   const hoy = D.hoyISO();
   const salida = datos.ajustes.salida || {};
   const visitasHoy = D.filtrarVisitas(datos, { desde: hoy, hasta: hoy });
+  // Las 5 últimas apuntadas con otra fecha: así se ve al momento que se han guardado.
+  const ultimas = [...datos.visitas].filter((v) => v.fecha !== hoy)
+    .sort((a, b) => (b.creadaEl || '').localeCompare(a.creadaEl || '')).slice(0, 5);
   const urgentes = D.pendientesAbiertas(datos).filter((v) => v.pendiente.fechaPrevista && v.pendiente.fechaPrevista <= hoy).length;
   const distribuidores = ordenar(datos.distribuidores);
   const agendaHoy = D.agendaDelDia(datos, hoy);
@@ -410,6 +417,9 @@ function pantallaHoy() {
     ${urgentes ? `<a class="tarjeta alerta" href="#pendientes">Tienes ${plural(urgentes, 'pendiente', 'pendientes')} para hoy o atrasados&nbsp;›</a>` : ''}
     <h2>Visitas de hoy (${visitasHoy.length})</h2>
     ${visitasHoy.length ? visitasHoy.map((v) => tarjetaVisita(v, false)).join('') : '<p class="vacio">Aún no has apuntado ninguna visita hoy.</p>'}
+    ${ultimas.length ? `<h2>Lo último que has apuntado</h2>
+    <p class="gris pequeno">De otros días. Toca una para cambiarla o borrarla.</p>
+    ${ultimas.map((v) => tarjetaVisita(v, true)).join('')}` : ''}
   `;
 }
 
@@ -542,7 +552,7 @@ function pantallaVisita() {
   const atajos = [[15, 'En 2 semanas'], [30, 'En 1 mes'], [45, 'En mes y medio']];
 
   return `
-    <h1>${titulo}</h1>
+    <div class="titulo-visita"><h1>${titulo}</h1>${!b.nueva ? '<button class="peligro" data-accion="borrarVisita">Borrar</button>' : ''}</div>
     <p></p>
     ${origen ? `<section class="tarjeta info">Venta del pendiente del ${esc(D.fechaES(origen.fecha))}: ${esc([D.describirLineas(datos, origen.pendiente.lineas), origen.pendiente.detalle].filter(Boolean).join(' · '))}.${b.nueva ? ' Revisa las cantidades y guarda.' : ''}</section>` : ''}
     <section class="tarjeta">
@@ -679,7 +689,8 @@ async function guardarVisitaFormulario() {
   if (b.nueva) datos.ajustes.salida = { distribuidorId: visita.distribuidorId, comercialId: visita.comercialId };
   if (await guardar()) {
     const ventaDePendiente = b.nueva && b.origenPendienteId;
-    aviso(ventaDePendiente ? '¡Venta apuntada! Pendiente cerrado.' : 'Visita guardada');
+    const cuando = visita.fecha === D.hoyISO() ? '' : ` (${D.fechaES(visita.fecha).slice(0, 5)})`;
+    aviso(ventaDePendiente ? '¡Venta apuntada! Pendiente cerrado.' : `Visita guardada${cuando}`);
     borrador = null;
     location.hash = ventaDePendiente ? '#pendientes' : (b.nueva ? '#hoy' : rutaAnterior);
   }
@@ -1246,10 +1257,13 @@ async function importar(input) {
   let paquete = null;
   try { paquete = JSON.parse(texto.replace(/^\uFEFF/, '')); } catch (e) { /* lo dirá leerCopia */ }
   if (D.esPaquete(paquete)) {
-    if (!confirm(`Vas a añadir ${plural(paquete.distribuidores.length, 'distribuidor', 'distribuidores')}. No se borra nada. ¿Seguir?`)) return;
+    const anadir = (paquete.distribuidores || []).length;
+    const quitar = (paquete.borrarVisitas || []).length;
+    const que = [anadir && `añadir ${plural(anadir, 'distribuidor', 'distribuidores')}`, quitar && `quitar ${plural(quitar, 'visita repetida', 'visitas repetidas')}`].filter(Boolean).join(' y ');
+    if (!confirm(`Vas a ${que}. No se toca nada más. ¿Seguir?`)) return;
     const resultado = D.aplicarPaquete(datos, paquete);
-    if (!resultado) { aviso('Esto ya estaba añadido.'); return; }
-    if (await guardar()) aviso(`Añadidos ${resultado.nuevos} distribuidores nuevos; ${resultado.actualizados} ya los tenías.`);
+    if (!resultado) { aviso('Esto ya estaba hecho.'); return; }
+    if (await guardar()) aviso(`Hecho: ${resultado.nuevos} distribuidores nuevos, ${resultado.borradas} visitas quitadas.`);
     pintar();
     return;
   }
