@@ -378,20 +378,32 @@ function agendaPasada(datos, hoy) {
 
 // ---------- Añadidos que manda el jefe (sin borrar nada) ----------
 // Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...], borrarVisitas: [ids],
-// vinos: [nombres] } (cualquiera de las listas puede faltar).
+// vinos: [nombres], cambiarVisitas: [{ id, fecha?, cantidades?: [{ vinoId, cantidad }] }] }
+// (cualquiera de las listas puede faltar).
 // Cada distribuidor: { nombre, otrosNombres, enAppComo, provincia, zona, pais, contactos }.
 // Si ya existe (por nombre, por enAppComo o por otrosNombres) solo se rellenan
 // los huecos y se añaden los contactos que falten; si no, se crea.
 
 function esPaquete(obj) {
   return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' &&
-    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos));
+    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas));
 }
 
 function aplicarPaquete(datos, paquete) {
   const aplicados = datos.ajustes.paquetesAplicados || [];
   if (aplicados.includes(paquete.id)) return null;
-  const resultado = { nuevos: 0, actualizados: 0, borradas: 0, vinos: 0 };
+  const resultado = { nuevos: 0, actualizados: 0, borradas: 0, vinos: 0, cambiadas: 0 };
+  // Correcciones que pide Luis (fecha o cantidades de una visita ya apuntada).
+  for (const cambio of paquete.cambiarVisitas || []) {
+    const v = porId(datos.visitas, cambio.id);
+    if (!v) continue;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(cambio.fecha || '')) v.fecha = cambio.fecha;
+    for (const c of cambio.cantidades || []) {
+      const linea = v.lineas.find((l) => l.vinoId === c.vinoId);
+      if (linea && Number(c.cantidad) > 0) linea.cantidad = Number(c.cantidad);
+    }
+    resultado.cambiadas++;
+  }
   // Vinos nuevos para la lista (si ya está con ese nombre, no se repite).
   for (const nombre of paquete.vinos || []) {
     if (!datos.vinos.some((v) => normalizar(v.nombre) === normalizar(nombre))) {

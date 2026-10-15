@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.10';
+const VERSION_APP = '1.11';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -161,17 +161,19 @@ async function revisarBuzon() {
     let nuevos = 0;
     let borradas = 0;
     let vinosNuevos = 0;
+    let cambiadas = 0;
     let aplicado = false;
     for (const paquete of Array.isArray(paquetes) ? paquetes : []) {
       if (!D.esPaquete(paquete)) continue;
       const resultado = D.aplicarPaquete(datos, paquete);
-      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; }
+      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; cambiadas += resultado.cambiadas; }
     }
     if (aplicado && await guardar()) {
       const partes = [];
       if (nuevos) partes.push(`Han llegado ${plural(nuevos, 'distribuidor nuevo', 'distribuidores nuevos')}.`);
       if (borradas) partes.push(`Lalo ha quitado ${plural(borradas, 'visita repetida', 'visitas repetidas')}.`);
       if (vinosNuevos) partes.push(`${plural(vinosNuevos, 'vino nuevo', 'vinos nuevos')} en la lista.`);
+      if (cambiadas) partes.push(`Lalo ha corregido ${plural(cambiadas, 'visita', 'visitas')}.`);
       aviso(partes.join(' ') || 'Datos actualizados por Lalo.');
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
