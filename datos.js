@@ -122,6 +122,8 @@ function describirLineas(datos, lineas) {
   return (lineas || []).map((l) => {
     const nombre = nombreConAnada(datos, l);
     if (!l.cantidad) return nombre;
+    // Una Dupla ya es un lote de dos botellas: «1 Frore de Carme Pezium Dupla».
+    if (l.unidad !== 'cajas' && /dupla/i.test(nombre)) return `${l.cantidad} ${nombre}`;
     const unidad = l.unidad === 'cajas'
       ? (l.cantidad === 1 ? 'caja' : 'cajas')
       : (l.cantidad === 1 ? 'botella' : 'botellas');
@@ -378,7 +380,8 @@ function agendaPasada(datos, hoy) {
 
 // ---------- Añadidos que manda el jefe (sin borrar nada) ----------
 // Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...], borrarVisitas: [ids],
-// vinos: [nombres], cambiarVisitas: [{ id, fecha?, cantidades?: [{ vinoId, cantidad }] }] }
+// vinos: [nombres], cambiarVisitas: [{ id, fecha?, cantidades?: [{ vinoId, cantidad }] }],
+// cambiarLineas: [{ id, quitar: [vinoIds], anadir: [{ vino: nombre, cantidad, unidad, anada }] }] }
 // (cualquiera de las listas puede faltar).
 // Cada distribuidor: { nombre, otrosNombres, enAppComo, provincia, zona, pais, contactos }.
 // Si ya existe (por nombre, por enAppComo o por otrosNombres) solo se rellenan
@@ -386,7 +389,7 @@ function agendaPasada(datos, hoy) {
 
 function esPaquete(obj) {
   return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' &&
-    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas));
+    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas) || Array.isArray(obj.cambiarLineas));
 }
 
 function aplicarPaquete(datos, paquete) {
@@ -414,6 +417,23 @@ function aplicarPaquete(datos, paquete) {
   // Visitas que el jefe quita (p. ej. apuntadas dos veces por error).
   for (const id of paquete.borrarVisitas || []) {
     if (porId(datos.visitas, id)) { borrarVisita(datos, id); resultado.borradas++; }
+  }
+  // Cambiar unos vinos por otros en una visita. El vino nuevo va por su nombre
+  // (los ids de los vinos los pone cada móvil); si no está en la lista, se crea.
+  for (const cambio of paquete.cambiarLineas || []) {
+    const v = porId(datos.visitas, cambio.id);
+    if (!v) continue;
+    v.lineas = v.lineas.filter((l) => !(cambio.quitar || []).includes(l.vinoId));
+    for (const nueva of cambio.anadir || []) {
+      let vino = datos.vinos.find((x) => normalizar(x.nombre) === normalizar(nueva.vino));
+      if (!vino) {
+        vino = { id: nuevoId(), nombre: nueva.vino, activo: true };
+        datos.vinos.push(vino);
+        resultado.vinos++;
+      }
+      v.lineas.push({ vinoId: vino.id, anada: nueva.anada || '', cantidad: Number(nueva.cantidad) || 1, unidad: nueva.unidad === 'cajas' ? 'cajas' : 'botellas' });
+    }
+    resultado.cambiadas++;
   }
   for (const nuevo of paquete.distribuidores || []) {
     const nombres = [nuevo.nombre, nuevo.enAppComo, ...String(nuevo.otrosNombres || '').split('/')]
