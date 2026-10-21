@@ -231,6 +231,7 @@ button:active, .boton:active { transform: scale(.98); }
 }
 .lista-clientes .nuevo { color: var(--primario); border-style: dashed; font-weight: 700; }
 .cliente-elegido { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.botones-cliente { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* ---------- Consultar ---------- */
 

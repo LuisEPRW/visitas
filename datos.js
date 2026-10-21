@@ -381,7 +381,8 @@ function agendaPasada(datos, hoy) {
 // ---------- Añadidos que manda el jefe (sin borrar nada) ----------
 // Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...], borrarVisitas: [ids],
 // vinos: [nombres], cambiarVisitas: [{ id, fecha?, cantidades?: [{ vinoId, cantidad }] }],
-// cambiarLineas: [{ id, quitar: [vinoIds], anadir: [{ vino: nombre, cantidad, unidad, anada }] }] }
+// cambiarLineas: [{ id, quitar: [vinoIds], anadir: [{ vino: nombre, cantidad, unidad, anada }] }],
+// cambiarClientes: [{ id, nombre }] }
 // (cualquiera de las listas puede faltar).
 // Cada distribuidor: { nombre, otrosNombres, enAppComo, provincia, zona, pais, contactos }.
 // Si ya existe (por nombre, por enAppComo o por otrosNombres) solo se rellenan
@@ -389,13 +390,13 @@ function agendaPasada(datos, hoy) {
 
 function esPaquete(obj) {
   return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' &&
-    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas) || Array.isArray(obj.cambiarLineas));
+    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas) || Array.isArray(obj.cambiarLineas) || Array.isArray(obj.cambiarClientes));
 }
 
 function aplicarPaquete(datos, paquete) {
   const aplicados = datos.ajustes.paquetesAplicados || [];
   if (aplicados.includes(paquete.id)) return null;
-  const resultado = { nuevos: 0, actualizados: 0, borradas: 0, vinos: 0, cambiadas: 0 };
+  const resultado = { nuevos: 0, actualizados: 0, borradas: 0, vinos: 0, cambiadas: 0, clientes: 0 };
   // Correcciones que pide Luis (fecha o cantidades de una visita ya apuntada).
   for (const cambio of paquete.cambiarVisitas || []) {
     const v = porId(datos.visitas, cambio.id);
@@ -434,6 +435,13 @@ function aplicarPaquete(datos, paquete) {
       v.lineas.push({ vinoId: vino.id, anada: nueva.anada || '', cantidad: Number(nueva.cantidad) || 1, unidad: nueva.unidad === 'cajas' ? 'cajas' : 'botellas' });
     }
     resultado.cambiadas++;
+  }
+  // Nombres de clientes mal escritos (p. ej. por el corrector del teléfono).
+  for (const cambio of paquete.cambiarClientes || []) {
+    const c = porId(datos.clientes, cambio.id);
+    if (!c || !String(cambio.nombre || '').trim()) continue;
+    c.nombre = String(cambio.nombre).trim();
+    resultado.clientes++;
   }
   for (const nuevo of paquete.distribuidores || []) {
     const nombres = [nuevo.nombre, nuevo.enAppComo, ...String(nuevo.otrosNombres || '').split('/')]

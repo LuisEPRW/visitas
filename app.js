@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.12';
+const VERSION_APP = '1.13';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -162,11 +162,12 @@ async function revisarBuzon() {
     let borradas = 0;
     let vinosNuevos = 0;
     let cambiadas = 0;
+    let clientes = 0;
     let aplicado = false;
     for (const paquete of Array.isArray(paquetes) ? paquetes : []) {
       if (!D.esPaquete(paquete)) continue;
       const resultado = D.aplicarPaquete(datos, paquete);
-      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; cambiadas += resultado.cambiadas; }
+      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; cambiadas += resultado.cambiadas; clientes += resultado.clientes; }
     }
     if (aplicado && await guardar()) {
       const partes = [];
@@ -174,6 +175,7 @@ async function revisarBuzon() {
       if (borradas) partes.push(`Lalo ha quitado ${plural(borradas, 'visita repetida', 'visitas repetidas')}.`);
       if (vinosNuevos) partes.push(`${plural(vinosNuevos, 'vino nuevo', 'vinos nuevos')} en la lista.`);
       if (cambiadas) partes.push(`Lalo ha corregido ${plural(cambiadas, 'visita', 'visitas')}.`);
+      if (clientes) partes.push(`Lalo ha corregido el nombre de ${plural(clientes, 'cliente', 'clientes')}.`);
       aviso(partes.join(' ') || 'Datos actualizados por Lalo.');
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
@@ -519,7 +521,10 @@ function seccionCliente() {
     const c = D.porId(datos.clientes, b.clienteId) || {};
     return `<div class="cliente-elegido">
       <div><strong>${esc(c.nombre)}</strong><div class="gris pequeno">${esc([c.poblacion, c.provincia, c.zona].filter(Boolean).join(' · '))}</div></div>
-      <button type="button" data-accion="cambiarCliente">Cambiar</button>
+      <div class="botones-cliente">
+        <button type="button" data-accion="corregirCliente">Corregir</button>
+        <button type="button" data-accion="cambiarCliente">Cambiar</button>
+      </div>
     </div>`;
   }
   if (b.clienteNuevo) {
@@ -1315,6 +1320,11 @@ const acciones = {
 
   elegirCliente(el) { borrador.clienteId = el.dataset.id; borrador.clienteNuevo = null; repintar(); },
   cambiarCliente() { borrador.clienteId = ''; borrador.busqueda = ''; repintar(); },
+  async corregirCliente() {
+    await editarCliente(borrador.clienteId);
+    if (!D.porId(datos.clientes, borrador.clienteId)) borrador.clienteId = '';
+    repintar();
+  },
   crearCliente() {
     const zona = ultimaZona(borrador.distribuidorId);
     borrador.clienteNuevo = { nombre: borrador.busqueda.trim(), tipo: '', poblacion: '', provincia: zona.provincia, zona: zona.zona, contacto: '' };
