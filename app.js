@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.13';
+const VERSION_APP = '1.14';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -163,11 +163,13 @@ async function revisarBuzon() {
     let vinosNuevos = 0;
     let cambiadas = 0;
     let clientes = 0;
+    let agenda = 0;
+    let equipo = 0;
     let aplicado = false;
     for (const paquete of Array.isArray(paquetes) ? paquetes : []) {
       if (!D.esPaquete(paquete)) continue;
       const resultado = D.aplicarPaquete(datos, paquete);
-      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; cambiadas += resultado.cambiadas; clientes += resultado.clientes; }
+      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; cambiadas += resultado.cambiadas; clientes += resultado.clientes; agenda += resultado.salidas; equipo += resultado.renombrados + resultado.comerciales; }
     }
     if (aplicado && await guardar()) {
       const partes = [];
@@ -176,6 +178,8 @@ async function revisarBuzon() {
       if (vinosNuevos) partes.push(`${plural(vinosNuevos, 'vino nuevo', 'vinos nuevos')} en la lista.`);
       if (cambiadas) partes.push(`Lalo ha corregido ${plural(cambiadas, 'visita', 'visitas')}.`);
       if (clientes) partes.push(`Lalo ha corregido el nombre de ${plural(clientes, 'cliente', 'clientes')}.`);
+      if (agenda) partes.push('Lalo ha puesto al día tu agenda.');
+      if (equipo) partes.push('Lalo ha puesto al día distribuidores y comerciales.');
       aviso(partes.join(' ') || 'Datos actualizados por Lalo.');
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
@@ -242,7 +246,7 @@ async function configurarNube() {
   ];
   const cuerpo = campo('Repositorio privado', 'repo', conexion.repo) +
     campo('Llave de GitHub', 'llave', conexion.llave, 'type="password"') +
-    `<label>Este aparato<select name="modo">${modos.map(([k, t]) => `<option value="${k}"${(conexion.modo === 'no' ? 'subir' : conexion.modo) === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+    `<label>Este aparato<select name="modo">${modos.map(([k, t]) => `<option value="${k}"${(conexion.modo === 'no' ? 'ver' : conexion.modo) === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
     <p class="gris pequeno">En «Solo ver», lo que hay en este aparato se sustituye por lo de Luis y se actualiza solo cada 30 segundos.</p>`;
   const { boton, valores } = await abrirDialogo('Copia en GitHub', cuerpo,
     [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }]);

@@ -382,21 +382,25 @@ function agendaPasada(datos, hoy) {
 // Un «paquete» es { app: 'luis-visitas-anadidos', id, distribuidores: [...], borrarVisitas: [ids],
 // vinos: [nombres], cambiarVisitas: [{ id, fecha?, cantidades?: [{ vinoId, cantidad }] }],
 // cambiarLineas: [{ id, quitar: [vinoIds], anadir: [{ vino: nombre, cantidad, unidad, anada }] }],
-// cambiarClientes: [{ id, nombre }] }
-// (cualquiera de las listas puede faltar).
+// cambiarClientes: [{ id, nombre }], cambiarDistribuidores: [{ id, nombre }],
+// comerciales: [{ distribuidor: nombre, provincia?, nombre }], borrarSalidas: [ids],
+// agenda: [{ fecha, distribuidor?: nombre, provincia?, comercial?: nombre, lugar, nota }] }
+// (cualquiera de las listas puede faltar). En la agenda y en los comerciales el
+// distribuidor va por su nombre: si no existe, se crea.
 // Cada distribuidor: { nombre, otrosNombres, enAppComo, provincia, zona, pais, contactos }.
 // Si ya existe (por nombre, por enAppComo o por otrosNombres) solo se rellenan
 // los huecos y se añaden los contactos que falten; si no, se crea.
 
 function esPaquete(obj) {
   return !!obj && obj.app === 'luis-visitas-anadidos' && typeof obj.id === 'string' &&
-    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas) || Array.isArray(obj.cambiarLineas) || Array.isArray(obj.cambiarClientes));
+    (Array.isArray(obj.distribuidores) || Array.isArray(obj.borrarVisitas) || Array.isArray(obj.vinos) || Array.isArray(obj.cambiarVisitas) || Array.isArray(obj.cambiarLineas) || Array.isArray(obj.cambiarClientes) ||
+    Array.isArray(obj.cambiarDistribuidores) || Array.isArray(obj.comerciales) || Array.isArray(obj.borrarSalidas) || Array.isArray(obj.agenda));
 }
 
 function aplicarPaquete(datos, paquete) {
   const aplicados = datos.ajustes.paquetesAplicados || [];
   if (aplicados.includes(paquete.id)) return null;
-  const resultado = { nuevos: 0, actualizados: 0, borradas: 0, vinos: 0, cambiadas: 0, clientes: 0 };
+  const resultado = { nuevos: 0, actualizados: 0, borradas: 0, vinos: 0, cambiadas: 0, clientes: 0, renombrados: 0, comerciales: 0, salidas: 0 };
   // Correcciones que pide Luis (fecha o cantidades de una visita ya apuntada).
   for (const cambio of paquete.cambiarVisitas || []) {
     const v = porId(datos.visitas, cambio.id);
@@ -462,6 +466,52 @@ function aplicarPaquete(datos, paquete) {
       if (!contactos.some((y) => normalizar(y) === normalizar(c))) contactos.push(c);
     }
     if (contactos.length) d.contactos = contactos.join('; ');
+  }
+  // Distribuidores que cambian de nombre (p. ej. otra persona al frente).
+  for (const cambio of paquete.cambiarDistribuidores || []) {
+    const d = porId(datos.distribuidores, cambio.id);
+    if (!d || !String(cambio.nombre || '').trim()) continue;
+    d.nombre = String(cambio.nombre).trim();
+    resultado.renombrados++;
+  }
+  const distribuidorPorNombre = (nombre, provincia) => {
+    let d = datos.distribuidores.find((x) => normalizar(x.nombre) === normalizar(nombre));
+    if (!d) {
+      d = { id: nuevoId(), nombre: String(nombre).trim(), provincia: provincia || '', zona: '' };
+      datos.distribuidores.push(d);
+      resultado.nuevos++;
+    }
+    if (!d.provincia && provincia) d.provincia = provincia;
+    return d;
+  };
+  const comercialPorNombre = (d, nombre) => {
+    let c = datos.comerciales.find((x) => x.distribuidorId === d.id && normalizar(x.nombre) === normalizar(nombre));
+    if (!c) {
+      c = { id: nuevoId(), distribuidorId: d.id, nombre: String(nombre).trim(), telefono: '' };
+      datos.comerciales.push(c);
+      resultado.comerciales++;
+    }
+    return c;
+  };
+  for (const nuevo of paquete.comerciales || []) {
+    if (nuevo.distribuidor && nuevo.nombre) comercialPorNombre(distribuidorPorNombre(nuevo.distribuidor, nuevo.provincia), nuevo.nombre);
+  }
+  // Salidas de la agenda: se quitan las que ya no valen y se añaden las nuevas
+  // (si ya hay una ese día con ese distribuidor, no se repite).
+  for (const id of paquete.borrarSalidas || []) {
+    if (porId(datos.agenda, id)) { datos.agenda = datos.agenda.filter((x) => x.id !== id); resultado.salidas++; }
+  }
+  for (const nueva of paquete.agenda || []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nueva.fecha || '')) continue;
+    const d = nueva.distribuidor ? distribuidorPorNombre(nueva.distribuidor, nueva.provincia) : null;
+    const distribuidorId = d ? d.id : '';
+    if (datos.agenda.some((x) => x.fecha === nueva.fecha && x.distribuidorId === distribuidorId && (distribuidorId || x.nota === (nueva.nota || '')))) continue;
+    datos.agenda.push({
+      id: nuevoId(), fecha: nueva.fecha, distribuidorId,
+      comercialId: d && nueva.comercial ? comercialPorNombre(d, nueva.comercial).id : '',
+      lugar: nueva.lugar || '', nota: nueva.nota || '',
+    });
+    resultado.salidas++;
   }
   datos.ajustes.paquetesAplicados = [...aplicados, paquete.id];
   return resultado;
