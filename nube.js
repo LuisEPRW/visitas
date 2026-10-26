@@ -25,11 +25,13 @@ function aBase64(texto) {
 }
 
 function errorGitHub(respuesta) {
-  if (respuesta.status === 401) return new Error('La llave de GitHub no vale o ha caducado.');
-  if (respuesta.status === 403 || respuesta.status === 404) {
-    return new Error('La llave no tiene permiso para ese repositorio, o el repositorio no existe.');
-  }
-  return new Error('GitHub ha respondido con un error (' + respuesta.status + ').');
+  let error;
+  if (respuesta.status === 401) error = new Error('La llave de GitHub no vale o ha caducado.');
+  else if (respuesta.status === 403 || respuesta.status === 404) {
+    error = new Error('La llave no tiene permiso para ese repositorio, o el repositorio no existe.');
+  } else error = new Error('GitHub ha respondido con un error (' + respuesta.status + ').');
+  error.status = respuesta.status;
+  return error;
 }
 
 // Comprueba la llave y que el repositorio sea privado.

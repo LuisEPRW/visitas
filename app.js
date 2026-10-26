@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.14';
+const VERSION_APP = '1.15';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -122,6 +122,20 @@ async function subirAhora() {
     conexion.ultima = new Date().toISOString();
     quitarError();
   } catch (e) {
+    // Llave de solo lectura (las «github_pat_» que hacemos para mirar) puesta en
+    // «Es el móvil de Luis»: este aparato no puede subir, así que pasa solo a
+    // «Solo ver» y se trae lo de Luis. El móvil de Luis usa otra llave.
+    if (e.status === 403 && conexion.llave.startsWith('github_pat_')) {
+      subiendo = false;
+      conexion.modo = 'ver';
+      conexion.pendiente = false;
+      quitarError();
+      ultimoTextoBajado = '';
+      await guardarConexion();
+      repintar();
+      bajarAhora();
+      return;
+    }
     ponerError(e);
   }
   subiendo = false;
@@ -158,29 +172,14 @@ async function revisarBuzon() {
   try {
     const texto = await N.bajarNube(conexion.repo, conexion.llave, 'para-luis.json');
     const paquetes = texto ? JSON.parse(texto) : [];
-    let nuevos = 0;
-    let borradas = 0;
-    let vinosNuevos = 0;
-    let cambiadas = 0;
-    let clientes = 0;
-    let agenda = 0;
-    let equipo = 0;
     let aplicado = false;
     for (const paquete of Array.isArray(paquetes) ? paquetes : []) {
       if (!D.esPaquete(paquete)) continue;
       const resultado = D.aplicarPaquete(datos, paquete);
-      if (resultado) { aplicado = true; nuevos += resultado.nuevos; borradas += resultado.borradas; vinosNuevos += resultado.vinos; cambiadas += resultado.cambiadas; clientes += resultado.clientes; agenda += resultado.salidas; equipo += resultado.renombrados + resultado.comerciales; }
+      if (resultado) aplicado = true;
     }
+    // Sin aviso en pantalla: Lalo se lo cuenta a Luis por correo.
     if (aplicado && await guardar()) {
-      const partes = [];
-      if (nuevos) partes.push(`Han llegado ${plural(nuevos, 'distribuidor nuevo', 'distribuidores nuevos')}.`);
-      if (borradas) partes.push(`Lalo ha quitado ${plural(borradas, 'visita repetida', 'visitas repetidas')}.`);
-      if (vinosNuevos) partes.push(`${plural(vinosNuevos, 'vino nuevo', 'vinos nuevos')} en la lista.`);
-      if (cambiadas) partes.push(`Lalo ha corregido ${plural(cambiadas, 'visita', 'visitas')}.`);
-      if (clientes) partes.push(`Lalo ha corregido el nombre de ${plural(clientes, 'cliente', 'clientes')}.`);
-      if (agenda) partes.push('Lalo ha puesto al día tu agenda.');
-      if (equipo) partes.push('Lalo ha puesto al día distribuidores y comerciales.');
-      aviso(partes.join(' ') || 'Datos actualizados por Lalo.');
       if (!borrador && !document.getElementById('dialogo').open) repintar();
     }
     // Si GitHub contesta, hay cobertura: fuera el aviso viejo de «sin conexión».

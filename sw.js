@@ -1,7 +1,7 @@
 // Guarda la app en el teléfono para que abra sin cobertura. Con cobertura
 // siempre trae la última versión publicada, así que no hace falta tocar
 // este número al cambiar la app.
-const CACHE = 'visitas-luis-v15';
+const CACHE = 'visitas-luis-v16';
 const FICHEROS = [
   './', './index.html', './estilos.css', './datos.js', './nube.js', './app.js', './manifest.webmanifest',
   './iconos/icono-180-b.png', './iconos/logo-96.png', './iconos/icono-192-b.png', './iconos/icono-512-b.png',
