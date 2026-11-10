@@ -89,6 +89,7 @@ function datosVacios() {
     clientes: [],
     visitas: [],
     agenda: [],
+    reuniones: [],
     ajustes: { salida: null, ultimaCopia: null },
   };
 }
@@ -267,10 +268,15 @@ function posponerPendiente(datos, id, dias, hoy) {
 
 // ---------- Exportar a Excel (CSV) ----------
 
+// Para la reunión bimestral (se guardan tal cual, como texto).
+const ESTADOS_DISTRIBUIDOR = ['Activo', 'Potencial', 'Perdido'];
+const TIPOS_DISTRIBUIDOR = ['Distribuidor', 'Importador'];
+const CLIENTE_NUEVO = ['Sí', 'No'];
+
 const COLUMNAS_CSV = [
   'Fecha', 'Distribuidor', 'Comercial', 'Cliente', 'Tipo de cliente', 'Población', 'Provincia', 'Zona',
   'Resultado', 'Vino vendido', 'Añada', 'Cantidad', 'Unidad', 'Pendiente de', 'Vinos pendientes', 'Detalle pendiente',
-  'Fecha prevista', 'Estado pendiente', 'Nota',
+  'Fecha prevista', 'Estado pendiente', 'Nota', 'Cliente nuevo', 'Fecha de alta', 'Muestras', 'Para qué las muestras',
 ];
 
 function celdaCSV(valor) {
@@ -298,6 +304,7 @@ function exportarCSV(datos, visitas) {
     const finales = [
       p ? TIPOS_PENDIENTE[p.tipo] : '', p ? describirLineas(datos, p.lineas) : '', p ? p.detalle : '',
       p ? fechaES(p.fechaPrevista) : '', p ? ESTADOS_PENDIENTE[p.estado] : '', v.nota,
+      cli.nuevo || '', cli.altaEl ? fechaES(cli.altaEl) : '', describirLineas(datos, v.muestras || []), v.motivoMuestras || '',
     ];
     const lineas = v.lineas && v.lineas.length ? v.lineas : [null];
     for (const l of lineas) {
@@ -305,6 +312,182 @@ function exportarCSV(datos, visitas) {
       filas.push([...comun, ...vino, ...finales]);
     }
   }
+  return '﻿' + filas.map((f) => f.map(celdaCSV).join(';')).join('\r\n') + '\r\n';
+}
+
+// ---------- Reunión bimestral con Dirección ----------
+// Los bimestres van por pares de meses: ene-feb, mar-abr… sep-oct, nov-dic.
+// Se identifican por el primer mes: '2026-09' es sep-oct 2026.
+
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+function bimestreDe(fechaISO) {
+  const [a, m] = fechaISO.split('-').map(Number);
+  const primero = m % 2 === 1 ? m : m - 1;
+  return `${a}-${String(primero).padStart(2, '0')}`;
+}
+
+function bimestreMover(periodo, pasos) {
+  const [a, m] = periodo.split('-').map(Number);
+  const total = a * 12 + (m - 1) + pasos * 2;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+}
+
+function bimestreLimites(periodo) {
+  const [a, m] = periodo.split('-').map(Number);
+  const fin = new Date(Date.UTC(a, m + 1, 0)).getUTCDate();
+  return { desde: `${periodo}-01`, hasta: `${a}-${String(m + 1).padStart(2, '0')}-${fin}` };
+}
+
+function bimestreNombre(periodo) {
+  const [a, m] = periodo.split('-').map(Number);
+  return `${MESES_CORTOS[m - 1]}-${MESES_CORTOS[m]} ${a}`;
+}
+
+// Fichas que Luis rellena a mano. Los campos van en el MISMO orden que las
+// columnas del Excel; los de tipo 'direccion' los rellena Dirección en la
+// reunión: no salen en el móvil y se descargan vacíos.
+const ESTADOS_ACCION = ['Hecho', 'En curso', 'No hecho'];
+const PRIORIDADES = ['1', '2', '3', '4', '5'];
+const FICHAS_REUNION = {
+  acciones: {
+    titulo: '7. Acciones realizadas desde la reunión anterior y resultado', una: 'acción realizada', principal: 'accion',
+    campos: [
+      ['accion', 'Acción acordada'], ['objetivo', 'Objetivo'], ['fecha', 'Fecha compromiso', 'fecha'],
+      ['responsable', 'Responsable', 'responsable'], ['estado', 'Estado', ESTADOS_ACCION], ['hecho', 'Qué se hizo', 'largo'],
+      ['resultado', 'Resultado medible'], ['ventas', 'Ventas generadas €', 'numero'], ['aprendizaje', 'Aprendizaje', 'largo'],
+      ['decision', 'Continuar / corregir / parar', ['Continuar', 'Corregir', 'Parar']], ['nueva', 'Nueva acción'],
+      ['observaciones', 'Observaciones', 'largo'],
+    ],
+  },
+  compromisos: {
+    titulo: '8. Acciones concretas comprometidas hasta la siguiente reunión', una: 'compromiso', principal: 'accion',
+    campos: [
+      ['prioridad', 'Prioridad', PRIORIDADES], ['accion', 'Acción concreta'], ['objetivo', 'Objetivo medible'],
+      ['marca', 'Marca / mercado'], ['cliente', 'Cliente / distribuidor'], ['responsable', 'Responsable', 'responsable'],
+      ['fecha', 'Fecha límite', 'fecha'], ['indicador', 'Indicador de éxito'], ['recursos', 'Recursos necesarios'],
+      ['dependencias', 'Dependencias'], ['estado', 'Estado', ['Pendiente', 'En curso', 'Hecho']],
+      ['resultadoProxima', 'Resultado próxima reunión', 'direccion'],
+    ],
+  },
+  alertas: {
+    titulo: '9. Alertas que requieren decisión de Dirección', una: 'alerta', principal: 'alerta',
+    campos: [
+      ['prioridad', 'Prioridad', PRIORIDADES], ['alerta', 'Alerta / oportunidad', 'largo'], ['impacto', 'Impacto esperado'],
+      ['marca', 'Marca / mercado'], ['cliente', 'Cliente / distribuidor'], ['alternativas', 'Alternativas', 'largo'],
+      ['recomendacion', 'Recomendación Comercial', 'largo'], ['decisionSolicitada', 'Decisión solicitada', 'largo'],
+      ['decisionTomada', 'Decisión tomada', 'direccion'], ['responsable', 'Responsable', 'direccion'],
+      ['fecha', 'Fecha límite', 'direccion'], ['seguimiento', 'Seguimiento', 'direccion'],
+    ],
+  },
+};
+const RESPONSABLE = 'Luis Lado';
+
+function reunionVacia(periodo) {
+  return { id: periodo, periodo, mensaje: '', conclusion: '', prioridades: ['', '', ''], acciones: [], compromisos: [], alertas: [] };
+}
+
+function reunionDe(datos, periodo) {
+  return (datos.reuniones || []).find((r) => r.periodo === periodo) || null;
+}
+
+// Último día con visita o salida de agenda (hasta 'hoy') y la próxima salida.
+function contactosDistribuidor(datos, distribuidorId, hoy) {
+  const fechas = [
+    ...datos.visitas.filter((v) => v.distribuidorId === distribuidorId).map((v) => v.fecha),
+    ...datos.agenda.filter((s) => s.distribuidorId === distribuidorId && s.fecha && s.fecha <= hoy).map((s) => s.fecha),
+  ].sort();
+  const proxima = datos.agenda.filter((s) => s.distribuidorId === distribuidorId && s.fecha && s.fecha > hoy).map((s) => s.fecha).sort()[0] || '';
+  return { ultimo: fechas[fechas.length - 1] || '', proxima };
+}
+
+// Lo que la app sabe sacar sola para la reunión de un bimestre.
+function resumenReunion(datos, periodo, hoy) {
+  const { desde, hasta } = bimestreLimites(periodo);
+  const visitas = datos.visitas.filter((v) => v.fecha >= desde && v.fecha <= hasta).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const clientesNuevos = datos.clientes.filter((c) => c.nuevo === 'Sí' && c.altaEl >= desde && c.altaEl <= hasta);
+  const conMuestras = visitas.filter((v) => v.muestras && v.muestras.length);
+  const abiertas = pendientesAbiertas(datos);
+  const distribuidores = datos.distribuidores.filter((d) => d.estado || visitas.some((v) => v.distribuidorId === d.id));
+  const potenciales = datos.distribuidores.filter((d) => d.estado === 'Potencial' || d.tipo === 'Importador');
+  return { desde, hasta, visitas, clientesNuevos, conMuestras, abiertas, distribuidores, potenciales, totales: totales(datos, visitas) };
+}
+
+function unidades(lineas) {
+  const b = lineas.filter((l) => l.unidad !== 'cajas').reduce((t, l) => t + (Number(l.cantidad) || 0), 0);
+  const c = lineas.filter((l) => l.unidad === 'cajas').reduce((t, l) => t + (Number(l.cantidad) || 0), 0);
+  return [b && `${b} bot.`, c && `${c} ${c === 1 ? 'caja' : 'cajas'}`].filter(Boolean).join(' + ');
+}
+
+// Un CSV con un bloque por apartado del Excel (hoja «Comercial»), con sus
+// mismas columnas. Las columnas que salen de la oficina (ventas, facturas…)
+// van vacías.
+function exportarReunion(datos, periodo, hoy) {
+  const r = reunionDe(datos, periodo) || reunionVacia(periodo);
+  const z = resumenReunion(datos, periodo, hoy);
+  const nombreDist = (id) => (porId(datos.distribuidores, id) || {}).nombre || '';
+  const cliente = (id) => porId(datos.clientes, id) || {};
+  const filas = [];
+  const bloque = (titulo, cabecera, cuerpo) => { filas.push([titulo], cabecera, ...cuerpo, []); };
+
+  filas.push([`Informe bimestral · Comercial · ${bimestreNombre(periodo)}`], ['Periodo', bimestreNombre(periodo), 'Responsable', RESPONSABLE], []);
+  bloque('Mensaje principal del bimestre', ['Mensaje principal del bimestre'], [[r.mensaje]]);
+  const t = z.totales;
+  bloque('Datos de la app de visitas', ['Visitas', 'Con venta', 'Pendientes', 'Sin interés', 'Vendido', 'Nuevos puntos de venta', 'Oportunidades abiertas', 'Muestras (visitas)'],
+    [[t.visitas, t.vendido || 0, t.pendiente || 0, t.sin_interes || 0, `${t.botellas} bot. + ${t.cajas} cajas`, z.clientesNuevos.length, z.abiertas.length, z.conMuestras.length]]);
+
+  bloque('2. Evolución de distribuidores, pedidos y reposiciones',
+    ['Distribuidor', 'Zona', 'Venta actual €', 'Venta anterior €', 'Variación %', 'Pedidos', 'Reposiciones', 'Último pedido', 'Nuevos PDV', 'Estado', 'Próxima acción', 'Responsable'],
+    z.distribuidores.map((d) => {
+      const vs = z.visitas.filter((v) => v.distribuidorId === d.id);
+      const pdv = z.clientesNuevos.filter((c) => datos.visitas.some((v) => v.clienteId === c.id && v.distribuidorId === d.id)).length;
+      const k = contactosDistribuidor(datos, d.id, hoy);
+      const estado = [d.estado, vs.length && `${vs.length} visitas (últ. ${fechaES(vs[vs.length - 1].fecha).slice(0, 5)})`].filter(Boolean).join(' · ');
+      return [d.nombre, [d.provincia, d.zona].filter(Boolean).join(' / '), '', '', '', '', '', '', pdv || '', estado, k.proxima ? `Salida ${fechaES(k.proxima)}` : '', RESPONSABLE];
+    }));
+
+  bloque('3. Puntos de venta nuevos (de la app)', ['Cliente / PDV', 'Distribuidor', 'Población', 'Provincia', 'Fecha de alta'],
+    z.clientesNuevos.map((c) => {
+      const v = datos.visitas.find((x) => x.clienteId === c.id);
+      return [c.nombre, v ? nombreDist(v.distribuidorId) : '', c.poblacion, c.provincia, fechaES(c.altaEl)];
+    }));
+
+  bloque('4. Oportunidades, distribuidores potenciales e importadores',
+    ['Empresa / contacto', 'País / zona', 'Tipo', 'Oportunidad €', 'Probabilidad %', 'Previsión ponderada €', 'Fase', 'Último contacto', 'Próxima acción', 'Fecha próxima', 'Responsable', 'Observaciones'], [
+      ...z.abiertas.map((v) => {
+        const c = cliente(v.clienteId); const p = v.pendiente;
+        const importe = Number(p.importe) || 0; const prob = Number(p.probabilidad) || 0;
+        return [`${c.nombre || ''} (${nombreDist(v.distribuidorId)})`, [c.poblacion, c.provincia].filter(Boolean).join(', '), TIPOS_PENDIENTE[p.tipo],
+          importe || '', prob || '', importe && prob ? Math.round(importe * prob) / 100 : '', 'Pendiente', fechaES(v.fecha),
+          p.detalle || 'Cerrar pedido', fechaES(p.fechaPrevista), RESPONSABLE, describirLineas(datos, p.lineas)];
+      }),
+      ...z.potenciales.map((d) => {
+        const k = contactosDistribuidor(datos, d.id, hoy);
+        return [[d.nombre, d.contactos].filter(Boolean).join(' · '), d.pais || [d.provincia, d.zona].filter(Boolean).join(' / '),
+          d.tipo === 'Importador' ? 'Importador' : 'Distribuidor potencial', '', '', '', d.estado || '', k.ultimo ? fechaES(k.ultimo) : '',
+          k.proxima ? 'Salida' : '', k.proxima ? fechaES(k.proxima) : '', RESPONSABLE, ''];
+      }),
+    ]);
+
+  bloque('5. Muestras utilizadas y seguimiento',
+    ['Destinatario', 'Mercado', 'Marca / añada', 'Unidades', 'Fecha envío/entrega', 'Motivo', 'Seguimiento realizado', 'Resultado', 'Potencial €', 'Próximo paso', 'Fecha', 'Responsable'],
+    z.conMuestras.map((v) => {
+      const c = cliente(v.clienteId);
+      return [`${c.nombre || ''} (${nombreDist(v.distribuidorId)})`, c.provincia || '', v.muestras.map((l) => nombreConAnada(datos, l)).join(', '),
+        unidades(v.muestras), fechaES(v.fecha), v.motivoMuestras || '', '', '', '', '', '', RESPONSABLE];
+    }));
+
+  for (const tipo of ['acciones', 'compromisos', 'alertas']) {
+    const ficha = FICHAS_REUNION[tipo];
+    bloque(ficha.titulo, ficha.campos.map((c) => c[1]), (r[tipo] || []).map((fila) => ficha.campos.map(([clave, , clase]) => {
+      if (clase === 'direccion') return '';
+      if (clase === 'fecha') return fila[clave] ? fechaES(fila[clave]) : '';
+      return fila[clave] || '';
+    })));
+  }
+
+  bloque('Cierre Comercial', ['Conclusión del bimestre'], [[r.conclusion]]);
+  bloque('3 prioridades hasta la siguiente reunión', ['Prioridad', 'Qué'], (r.prioridades || []).map((x, i) => [i + 1, x]).filter((x) => x[1]));
   return '﻿' + filas.map((f) => f.map(celdaCSV).join(';')).join('\r\n') + '\r\n';
 }
 
@@ -345,6 +528,7 @@ function leerCopia(texto) {
     v.lineas = Array.isArray(v.lineas) ? v.lineas : [];
     v.pendiente = v.pendiente || null;
     if (v.pendiente) v.pendiente.lineas = Array.isArray(v.pendiente.lineas) ? v.pendiente.lineas : [];
+    if (v.muestras !== undefined && !Array.isArray(v.muestras)) v.muestras = [];
   }
   return {
     version: VERSION_DATOS,
@@ -354,6 +538,7 @@ function leerCopia(texto) {
     clientes: d.clientes,
     visitas: d.visitas,
     agenda: d.agenda,
+    reuniones: Array.isArray(d.reuniones) ? d.reuniones : [], // las copias antiguas no tienen reuniones
     ajustes: Object.assign({ salida: null, ultimaCopia: null }, d.ajustes),
   };
 }
@@ -592,10 +777,12 @@ function borrarEjemplo(datos) {
 
 // En el navegador queda como objeto global D; en Node se exporta para las pruebas.
 const D = {
-  VINOS_INICIALES, RESULTADOS, TIPOS_PENDIENTE, ESTADOS_PENDIENTE, nuevoId, aISO, hoyISO, sumarDias, diasEntre, fechaES,
+  VINOS_INICIALES, RESULTADOS, TIPOS_PENDIENTE, ESTADOS_PENDIENTE, ESTADOS_DISTRIBUIDOR, TIPOS_DISTRIBUIDOR, CLIENTE_NUEVO, nuevoId, aISO, hoyISO, sumarDias, diasEntre, fechaES,
   normalizar, datosVacios, porId, nombreVino, nombreConAnada, ultimaAnada, describirLineas, pendientesAbiertas, pendientesCerradas, filtrarVisitas,
   totales, agrupar, buscarClientes, clientesRecientes, valoresUsados, exportarCSV, celdaCSV, crearCopia, leerCopia,
   hayEjemplo, cargarEjemplo, borrarEjemplo, guardarVisita, borrarVisita, descartarPendiente, reabrirPendiente,
   posponerPendiente, esPaquete, aplicarPaquete, agendaDelDia, agendaProxima, agendaPasada,
+  bimestreDe, bimestreMover, bimestreLimites, bimestreNombre, FICHAS_REUNION, RESPONSABLE, reunionVacia, reunionDe,
+  contactosDistribuidor, resumenReunion, exportarReunion,
 };
 if (typeof module !== 'undefined') module.exports = D;

@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.15';
+const VERSION_APP = '1.16';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -14,6 +14,7 @@ let datos = null;
 let bd = null;
 let borrador = null; // la visita que se está rellenando en el formulario
 let rutaAnterior = '#hoy';
+let periodoReunion = null; // bimestre que se ve en la pantalla Reunión ('2026-09' = sep-oct)
 const consulta = { periodo: 'todo', desde: '', hasta: '', distribuidorId: '', comercialId: '', provincia: '', zona: '', resultado: '', texto: '', verPor: 'distribuidor' };
 const vistaPendientes = { cerrados: false, distribuidorId: '' };
 let busquedaClientesAjustes = '';
@@ -348,6 +349,7 @@ function tarjetaVisita(v, conFecha) {
     const estado = p.estado === 'abierta' ? `para el ${D.fechaES(p.fechaPrevista)}` : D.ESTADOS_PENDIENTE[p.estado].toLowerCase();
     partes.push(`<div class="detalle"><b>${esc(D.TIPOS_PENDIENTE[p.tipo])}</b> (${esc(estado)}): ${esc(que)}</div>`);
   }
+  if (v.muestras && v.muestras.length) partes.push(`<div class="detalle"><b>Muestras:</b> ${esc([D.describirLineas(datos, v.muestras), v.motivoMuestras].filter(Boolean).join(' · '))}</div>`);
   if (v.nota) partes.push(`<div class="detalle gris">${esc(v.nota)}</div>`);
   return `<a class="visita ${v.resultado}" href="#visita/${esc(v.id)}">
     <div class="fila1"><strong>${esc(cliente.nombre || '(cliente borrado)')}</strong><span class="etiqueta ${v.resultado}">${esc(D.RESULTADOS[v.resultado])}</span></div>
@@ -444,6 +446,7 @@ function borradorNuevo() {
   return {
     id: D.nuevoId(), nueva: true, fecha: hoy, distribuidorId: salida.distribuidorId || '', comercialId: salida.comercialId || '',
     clienteId: '', clienteNuevo: null, busqueda: '', resultado: '', lineas: [], conPendiente: false,
+    conMuestras: false, muestras: [], motivoMuestras: '',
     pendiente: pendienteVacio(hoy), nota: '', origenPendienteId: null, creadaEl: null, ejemplo: false,
   };
 }
@@ -455,7 +458,10 @@ function borradorDeVisita(visita) {
   b.busqueda = '';
   b.conPendiente = !!visita.pendiente;
   b.pendiente = b.pendiente || pendienteVacio(visita.fecha);
-  [...b.lineas, ...b.pendiente.lineas].forEach((l) => { if (!l.cantidad) l.cantidad = ''; });
+  b.muestras = b.muestras || [];
+  b.conMuestras = b.muestras.length > 0;
+  b.motivoMuestras = b.motivoMuestras || '';
+  [...b.lineas, ...b.pendiente.lineas, ...b.muestras].forEach((l) => { if (!l.cantidad) l.cantidad = ''; });
   return b;
 }
 
@@ -541,6 +547,7 @@ function seccionCliente() {
         <label>Zona<input data-campo="clienteNuevo.zona" value="${esc(n.zona)}" list="lista-zonas" autocomplete="off"></label>
       </div>
       <label>Contacto (opcional)<input data-campo="clienteNuevo.contacto" value="${esc(n.contacto)}" placeholder="Persona o teléfono" autocomplete="off"></label>
+      <label class="casilla"><input type="checkbox" data-campo="clienteNuevo.esNuevo"${n.esNuevo ? ' checked' : ''}>Es un cliente nuevo para la bodega</label>
       <button type="button" class="ancho" data-accion="cancelarClienteNuevo">Mejor elegir uno de la lista</button>
       ${listasSugerencias()}`;
   }
@@ -621,8 +628,20 @@ function pantallaVisita() {
       </div>
       <p></p>
       <input type="date" data-campo="pendiente.fechaPrevista" value="${esc(p.fechaPrevista)}">
+      <h3>Para la reunión (opcional)</h3>
+      <div class="dos-columnas">
+        <label>Importe estimado €<input type="number" inputmode="decimal" min="0" step="any" data-campo="pendiente.importe" value="${esc(p.importe || '')}"></label>
+        <label>Probabilidad %<input type="number" inputmode="numeric" min="0" max="100" step="5" data-campo="pendiente.probabilidad" value="${esc(p.probabilidad || '')}"></label>
+      </div>
       ${!b.nueva ? `<p></p><label>Estado<select data-campo="pendiente.estado">${Object.entries(D.ESTADOS_PENDIENTE).map(([k, t]) => `<option value="${k}"${p.estado === k ? ' selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
     </section>` : ''}
+
+    <section class="tarjeta">
+      <label class="casilla"><input type="checkbox" data-campo="conMuestras"${b.conMuestras ? ' checked' : ''}>He dejado muestras</label>
+      ${b.conMuestras ? `<h3>Muestras</h3>
+      ${seccionLineas('muestras', b.muestras, false)}
+      <label>Para qué (opcional)<input data-campo="motivoMuestras" value="${esc(b.motivoMuestras)}" placeholder="Ej.: para probar en carta" autocomplete="off"></label>` : ''}
+    </section>
 
     <section class="tarjeta">
       <label>Nota (opcional)<textarea data-campo="nota" placeholder="Lo que quieras recordar">${esc(b.nota)}</textarea></label>
@@ -664,6 +683,7 @@ async function guardarVisitaFormulario() {
   }));
   const lineas = limpiar(b.lineas);
   const lineasPendientes = limpiar(b.pendiente.lineas);
+  const muestras = b.conMuestras ? limpiar(b.muestras) : [];
 
   let error = '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.fecha)) error = 'Pon la fecha de la visita.';
@@ -674,6 +694,7 @@ async function guardarVisitaFormulario() {
   else if (b.resultado === 'vendido' && lineas.some((l) => !l.cantidad)) error = 'Falta la cantidad de algún vino vendido.';
   else if (conPendiente && !lineasPendientes.length && !b.pendiente.detalle.trim()) error = 'Apunta qué queda pendiente (un vino o el detalle).';
   else if (conPendiente && !/^\d{4}-\d{2}-\d{2}$/.test(b.pendiente.fechaPrevista)) error = 'Pon para cuándo es el pendiente.';
+  else if (b.conMuestras && !muestras.length) error = 'Apunta qué vino has dejado de muestra.';
   if (error) { aviso(error, true); return; }
 
   let clienteId = b.clienteId;
@@ -684,7 +705,8 @@ async function guardarVisitaFormulario() {
       clienteId = mismo.id;
     } else {
       clienteId = D.nuevoId();
-      datos.clientes.push({ id: clienteId, nombre: n.nombre.trim(), tipo: n.tipo, poblacion: n.poblacion.trim(), provincia: n.provincia.trim(), zona: n.zona.trim(), contacto: n.contacto.trim() });
+      datos.clientes.push({ id: clienteId, nombre: n.nombre.trim(), tipo: n.tipo, poblacion: n.poblacion.trim(), provincia: n.provincia.trim(), zona: n.zona.trim(), contacto: n.contacto.trim(),
+        nuevo: n.esNuevo ? 'Sí' : '', altaEl: n.esNuevo ? b.fecha : '' });
     }
   }
 
@@ -693,7 +715,17 @@ async function guardarVisitaFormulario() {
     resultado: b.resultado, lineas: b.resultado === 'vendido' ? lineas : [],
     pendiente: conPendiente ? Object.assign({}, b.pendiente, { lineas: lineasPendientes, detalle: b.pendiente.detalle.trim() }) : null,
     nota: b.nota.trim(), origenPendienteId: b.origenPendienteId || null, creadaEl: b.creadaEl || new Date().toISOString(),
+    muestras, motivoMuestras: muestras.length ? b.motivoMuestras.trim() : '',
   };
+  if (visita.pendiente) {
+    // Importe y probabilidad solo se guardan si se han puesto.
+    const numero = (x, tope) => Math.min(tope, Math.max(0, parseFloat(String(x || '').replace(',', '.')) || 0));
+    const importe = numero(visita.pendiente.importe, 1e9);
+    const probabilidad = Math.round(numero(visita.pendiente.probabilidad, 100));
+    delete visita.pendiente.importe; delete visita.pendiente.probabilidad;
+    if (importe) visita.pendiente.importe = importe;
+    if (probabilidad) visita.pendiente.probabilidad = probabilidad;
+  }
   if (visita.pendiente && visita.pendiente.estado === 'abierta') Object.assign(visita.pendiente, { cerradaEl: null, visitaVentaId: null });
   if (visita.pendiente && visita.pendiente.estado !== 'abierta' && !visita.pendiente.cerradaEl) visita.pendiente.cerradaEl = D.hoyISO();
   if (b.ejemplo) visita.ejemplo = true;
@@ -706,6 +738,120 @@ async function guardarVisitaFormulario() {
     borrador = null;
     location.hash = ventaDePendiente ? '#pendientes' : (b.nueva ? '#hoy' : rutaAnterior);
   }
+}
+
+// ---------- Pantalla REUNIÓN BIMESTRAL ----------
+// Luis la rellena una vez cada dos meses. Lo de visitas, clientes nuevos,
+// muestras y oportunidades sale solo; aquí apunta acciones, compromisos,
+// alertas y el cierre. La descarga lleva las columnas del Excel.
+
+function reunionActual() {
+  if (!periodoReunion) periodoReunion = D.bimestreMover(D.bimestreDe(D.hoyISO()), -1);
+  return D.reunionDe(datos, periodoReunion) || D.reunionVacia(periodoReunion);
+}
+
+// La reunión del bimestre, creándola si aún no existe (solo al guardar algo).
+function reunionParaGuardar() {
+  if (!Array.isArray(datos.reuniones)) datos.reuniones = [];
+  let r = D.reunionDe(datos, periodoReunion);
+  if (!r) { r = D.reunionVacia(periodoReunion); datos.reuniones.push(r); }
+  return r;
+}
+
+function pantallaReunion() {
+  const r = reunionActual();
+  const z = D.resumenReunion(datos, periodoReunion, D.hoyISO());
+  const t = z.totales;
+  const lista = (tipo) => {
+    const ficha = D.FICHAS_REUNION[tipo];
+    const filas = (r[tipo] || []).map((f, i) => {
+      const extra = [f.prioridad && `Prioridad ${f.prioridad}`, f.estado, f.fecha && D.fechaES(f.fecha)].filter(Boolean).join(' · ');
+      return `<button type="button" class="fila-reunion" data-accion="editarFilaReunion" data-tipo="${tipo}" data-i="${i}">
+        <strong>${esc(f[ficha.principal])}</strong>${extra ? `<span class="gris pequeno">${esc(extra)}</span>` : ''}</button>`;
+    }).join('');
+    return `<section class="tarjeta">
+      <h2>${esc(ficha.titulo)}</h2>
+      ${filas || '<p class="gris pequeno">Nada apuntado.</p>'}
+      <button type="button" class="ancho" data-accion="editarFilaReunion" data-tipo="${tipo}" data-i="-1">+ Añadir ${esc(ficha.una)}</button>
+    </section>`;
+  };
+  const prioridades = (r.prioridades || []).filter(Boolean);
+  return `
+    <h1>Reunión bimestral</h1>
+    <div class="selector-periodo">
+      <button type="button" data-accion="moverReunion" data-valor="-1" aria-label="Bimestre anterior">‹</button>
+      <strong>${esc(D.bimestreNombre(periodoReunion))}</strong>
+      <button type="button" data-accion="moverReunion" data-valor="1" aria-label="Bimestre siguiente">›</button>
+    </div>
+
+    <section class="tarjeta">
+      <h2>Sale solo de las visitas</h2>
+      <p>${t.visitas} visitas: ${t.vendido || 0} con venta, ${t.pendiente || 0} pendientes y ${t.sin_interes || 0} sin interés. Vendido: ${t.botellas} botellas y ${t.cajas} cajas.</p>
+      <p>Puntos de venta nuevos: ${z.clientesNuevos.length}${z.clientesNuevos.length ? ` (${esc(z.clientesNuevos.map((c) => c.nombre).join(', '))})` : ''}.</p>
+      <p>Visitas con muestras: ${z.conMuestras.length}. Oportunidades abiertas ahora: ${z.abiertas.length}. Distribuidores potenciales e importadores: ${z.potenciales.length}.</p>
+      <p class="gris pequeno">Las ventas en euros, la facturación y los cobros los pone la oficina.</p>
+    </section>
+
+    ${lista('acciones')}
+    ${lista('compromisos')}
+    ${lista('alertas')}
+
+    <section class="tarjeta">
+      <h2>Mensaje y cierre del bimestre</h2>
+      ${r.mensaje ? `<p><b>Mensaje principal:</b> ${esc(r.mensaje)}</p>` : ''}
+      ${r.conclusion ? `<p><b>Conclusión:</b> ${esc(r.conclusion)}</p>` : ''}
+      ${prioridades.length ? `<p><b>3 prioridades:</b></p><ol>${prioridades.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}
+      ${!r.mensaje && !r.conclusion && !prioridades.length ? '<p class="gris pequeno">Nada apuntado.</p>' : ''}
+      <button type="button" class="ancho" data-accion="editarCierre">${r.mensaje || r.conclusion || prioridades.length ? 'Cambiar' : 'Escribir'} mensaje y cierre</button>
+    </section>
+
+    <button class="principal ancho" data-accion="descargarReunion">Descargar para el Excel</button>
+    <p class="gris pequeno">Sale un fichero con un bloque por cada apartado de la hoja «Comercial» y sus mismas columnas.</p>
+  `;
+}
+
+async function editarFilaReunion(tipo, i) {
+  const ficha = D.FICHAS_REUNION[tipo];
+  const r = reunionActual();
+  const fila = i >= 0 ? (r[tipo] || [])[i] : null;
+  if (i >= 0 && !fila) return;
+  const valor = (clave) => (fila ? fila[clave] : '') || '';
+  const cuerpo = ficha.campos.filter(([, , clase]) => clase !== 'direccion').map(([clave, etiqueta, clase]) => {
+    if (Array.isArray(clase)) return `<label>${esc(etiqueta)}<select name="${clave}"><option value="">—</option>${opcionesTexto(clase, valor(clave))}</select></label>`;
+    if (clase === 'largo') return `<label>${esc(etiqueta)}<textarea name="${clave}">${esc(valor(clave))}</textarea></label>`;
+    if (clase === 'fecha') return `<label>${esc(etiqueta)}<input type="date" name="${clave}" value="${esc(valor(clave))}"></label>`;
+    if (clase === 'numero') return campo(etiqueta, clave, valor(clave), 'type="number" inputmode="decimal" min="0" step="any"');
+    if (clase === 'responsable') return campo(etiqueta, clave, fila ? valor(clave) : D.RESPONSABLE);
+    return campo(etiqueta, clave, valor(clave));
+  }).join('');
+  const botones = [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }];
+  if (fila) botones.unshift({ valor: 'borrar', texto: 'Borrar', clase: 'peligro' });
+  const { boton, valores } = await abrirDialogo(fila ? `Editar ${ficha.una}` : `Nueva ${ficha.una}`.replace('Nueva compromiso', 'Nuevo compromiso'), cuerpo, botones);
+  if (boton === 'borrar') {
+    if (!confirm(`¿Borrar esta ${ficha.una}?`.replace('esta compromiso', 'este compromiso'))) return;
+    const rr = reunionParaGuardar();
+    rr[tipo].splice(i, 1);
+  } else if (boton === 'guardar') {
+    if (!valores[ficha.principal]) { aviso(`Falta «${ficha.campos.find((c) => c[0] === ficha.principal)[1]}».`, true); return; }
+    const rr = reunionParaGuardar();
+    if (!Array.isArray(rr[tipo])) rr[tipo] = [];
+    if (fila) Object.assign(rr[tipo][i], valores); else rr[tipo].push(Object.assign({ id: D.nuevoId() }, valores));
+  } else return;
+  if (await guardar()) { aviso(boton === 'borrar' ? 'Borrado' : 'Guardado'); repintar(); }
+}
+
+async function editarCierre() {
+  const r = reunionActual();
+  const p = r.prioridades || [];
+  const cuerpo = `<label>Mensaje principal del bimestre<textarea name="mensaje">${esc(r.mensaje)}</textarea></label>
+    <label>Conclusión del bimestre<textarea name="conclusion">${esc(r.conclusion)}</textarea></label>
+    <h3>3 prioridades hasta la siguiente reunión</h3>
+    ${[0, 1, 2].map((n) => campo(`Prioridad ${n + 1}`, `prioridad${n}`, p[n] || '')).join('')}`;
+  const { boton, valores } = await abrirDialogo(`Cierre ${D.bimestreNombre(periodoReunion)}`, cuerpo,
+    [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }]);
+  if (boton !== 'guardar') return;
+  Object.assign(reunionParaGuardar(), { mensaje: valores.mensaje, conclusion: valores.conclusion, prioridades: [valores.prioridad0, valores.prioridad1, valores.prioridad2] });
+  if (await guardar()) { aviso('Guardado'); repintar(); }
 }
 
 // ---------- Pantalla PENDIENTES ----------
@@ -843,6 +989,8 @@ function pantallaConsultar() {
   const verPor = [['distribuidor', 'Distribuidor'], ['provincia', 'Provincia'], ['zona', 'Zona'], ['dia', 'Día'], ['cliente', 'Cliente']];
   return `
     <h1>Consultar</h1>
+    <p></p>
+    <a class="boton ancho" href="#reunion">Reunión bimestral con Dirección →</a>
     <p></p>
     <section class="tarjeta">
       <div class="chips">
@@ -1050,6 +1198,10 @@ async function editarDistribuidor(id) {
   const cuerpo = campo('Nombre del distribuidor', 'nombre', d.nombre) +
     `<div class="dos-columnas">${campo('Provincia', 'provincia', d.provincia, 'list="lista-provincias"')}${campo('Zona que cubre', 'zona', d.zona, 'list="lista-zonas"')}</div>
     ${campo('País (si no es España)', 'pais', d.pais)}
+    <div class="dos-columnas">
+      <label>Estado<select name="estado"><option value="">—</option>${opcionesTexto(D.ESTADOS_DISTRIBUIDOR, d.estado || '')}</select></label>
+      <label>Tipo<select name="tipo"><option value="">—</option>${opcionesTexto(D.TIPOS_DISTRIBUIDOR, d.tipo || '')}</select></label>
+    </div>
     <label>Contactos<textarea name="contactos" placeholder="Nombre <correo>; …">${esc(d.contactos || '')}</textarea></label>
     <h3>Comerciales</h3>
     <div id="filas-comerciales">${filas}</div>
@@ -1075,7 +1227,7 @@ async function editarDistribuidor(id) {
   }
   if (boton !== 'guardar') return null;
   if (!valores.nombre) { aviso('Falta el nombre del distribuidor.', true); return null; }
-  Object.assign(d, { nombre: valores.nombre, provincia: valores.provincia, zona: valores.zona, pais: valores.pais, contactos: valores.contactos });
+  Object.assign(d, { nombre: valores.nombre, provincia: valores.provincia, zona: valores.zona, pais: valores.pais, contactos: valores.contactos, estado: valores.estado, tipo: valores.tipo });
   if (esNuevo) datos.distribuidores.push(d);
 
   const noBorrables = [];
@@ -1121,6 +1273,8 @@ async function editarCliente(id) {
     campo('Población', 'poblacion', c.poblacion, 'list="lista-poblaciones"') +
     `<div class="dos-columnas">${campo('Provincia', 'provincia', c.provincia, 'list="lista-provincias"')}${campo('Zona', 'zona', c.zona, 'list="lista-zonas"')}</div>` +
     campo('Contacto', 'contacto', c.contacto) +
+    `<div class="dos-columnas"><label>¿Cliente nuevo?<select name="nuevo"><option value="">—</option>${opcionesTexto(D.CLIENTE_NUEVO, c.nuevo || '')}</select></label>
+      <label>Fecha de alta<input type="date" name="altaEl" value="${esc(c.altaEl || '')}"></label></div>` +
     (usadas ? `<p class="gris pequeno">${plural(usadas, 'visita', 'visitas')} apuntadas a este cliente.</p>` : '') +
     listasSugerencias();
   const botones = [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }];
@@ -1132,6 +1286,10 @@ async function editarCliente(id) {
     datos.clientes = datos.clientes.filter((x) => x.id !== c.id);
   } else if (boton === 'guardar') {
     if (!valores.nombre) { aviso('Falta el nombre del cliente.', true); return; }
+    // Marcado como nuevo sin fecha: se toma la de su primera visita (o hoy).
+    if (valores.nuevo === 'Sí' && !valores.altaEl) {
+      valores.altaEl = datos.visitas.filter((v) => v.clienteId === c.id).map((v) => v.fecha).sort()[0] || D.hoyISO();
+    }
     Object.assign(c, valores);
     if (esNuevo) datos.clientes.push(c);
   } else {
@@ -1368,6 +1526,10 @@ const acciones = {
     sincronizar();
     aviso(conexion.modo === 'subir' ? 'Subiendo…' : 'Actualizando…');
   },
+  moverReunion(el) { reunionActual(); periodoReunion = D.bimestreMover(periodoReunion, Number(el.dataset.valor)); repintar(); },
+  editarFilaReunion(el) { editarFilaReunion(el.dataset.tipo, Number(el.dataset.i)); },
+  editarCierre() { editarCierre(); },
+  descargarReunion() { entregarFichero(`reunion-${D.bimestreNombre(periodoReunion).replace(' ', '-')}.csv`, D.exportarReunion(datos, periodoReunion, D.hoyISO()), 'text/csv'); },
   exportarCSV() { entregarFichero(`visitas-luis-${D.hoyISO()}.csv`, D.exportarCSV(datos), 'text/csv'); },
   async editarDistribuidor(el) { await editarDistribuidor(el.dataset.id); repintar(); },
   async editarCliente(el) { await editarCliente(el.dataset.id); repintar(); },
@@ -1429,7 +1591,7 @@ async function alCambiarCampoVisita(el) {
   }
   ponerCampo(borrador, ruta, el.type === 'checkbox' ? el.checked : el.value);
   if (ruta === 'distribuidorId') { borrador.comercialId = ''; repintar(); }
-  if (ruta === 'conPendiente' || ruta === 'fecha' || ruta === 'pendiente.fechaPrevista') repintar();
+  if (ruta === 'conPendiente' || ruta === 'conMuestras' || ruta === 'fecha' || ruta === 'pendiente.fechaPrevista') repintar();
 }
 
 document.addEventListener('click', (e) => {
@@ -1501,13 +1663,13 @@ function pintar() {
     html = pantallaVisita();
   } else {
     borrador = null;
-    const pantallas = { hoy: pantallaHoy, agenda: pantallaAgenda, pendientes: pantallaPendientes, consultar: pantallaConsultar, ajustes: pantallaAjustes };
+    const pantallas = { hoy: pantallaHoy, agenda: pantallaAgenda, pendientes: pantallaPendientes, consultar: pantallaConsultar, ajustes: pantallaAjustes, reunion: pantallaReunion };
     html = (pantallas[nombre] || pantallaHoy)();
   }
   const marca = enFormulario ? '' : '<div class="marca"><img src="iconos/logo-96.png" alt=""><span>Luis Lado · Visitas</span></div>';
   main.innerHTML = bandaNube() + marca + html;
   document.body.classList.toggle('en-formulario', enFormulario);
-  const pestana = enFormulario ? '' : (nombre || 'hoy');
+  const pestana = enFormulario ? '' : (nombre === 'reunion' ? 'consultar' : (nombre || 'hoy'));
   document.querySelectorAll('#pestanas a').forEach((a) => a.classList.toggle('activa', a.dataset.pestana === pestana));
   actualizarGlobo();
 }

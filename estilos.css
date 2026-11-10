@@ -437,3 +437,9 @@ h3 { color: var(--dorado-texto); font-size: 14px; letter-spacing: .06em; text-tr
 
 .titulo-visita { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .titulo-visita .peligro { min-height: 40px; padding: 6px 14px; }
+
+/* Reunión bimestral */
+.selector-periodo { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 8px 0 14px; font-size: 1.15rem; }
+.selector-periodo button { min-width: 48px; font-size: 1.4rem; }
+.fila-reunion { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; margin-bottom: 8px; }
+a.boton { display: flex; align-items: center; justify-content: center; text-decoration: none; }
