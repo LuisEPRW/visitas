@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.16';
+const VERSION_APP = '1.18';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -349,7 +349,7 @@ function tarjetaVisita(v, conFecha) {
     const estado = p.estado === 'abierta' ? `para el ${D.fechaES(p.fechaPrevista)}` : D.ESTADOS_PENDIENTE[p.estado].toLowerCase();
     partes.push(`<div class="detalle"><b>${esc(D.TIPOS_PENDIENTE[p.tipo])}</b> (${esc(estado)}): ${esc(que)}</div>`);
   }
-  if (v.muestras && v.muestras.length) partes.push(`<div class="detalle"><b>Muestras:</b> ${esc([D.describirLineas(datos, v.muestras), v.motivoMuestras].filter(Boolean).join(' · '))}</div>`);
+  if (v.muestras && v.muestras.length) partes.push(`<div class="detalle"><b>Muestras:</b> ${esc([D.describirLineas(datos, v.muestras), v.motivoMuestras, v.segMuestras && v.segMuestras.resultado && 'resultado: ' + v.segMuestras.resultado].filter(Boolean).join(' · '))}</div>`);
   if (v.nota) partes.push(`<div class="detalle gris">${esc(v.nota)}</div>`);
   return `<a class="visita ${v.resultado}" href="#visita/${esc(v.id)}">
     <div class="fila1"><strong>${esc(cliente.nombre || '(cliente borrado)')}</strong><span class="etiqueta ${v.resultado}">${esc(D.RESULTADOS[v.resultado])}</span></div>
@@ -446,7 +446,7 @@ function borradorNuevo() {
   return {
     id: D.nuevoId(), nueva: true, fecha: hoy, distribuidorId: salida.distribuidorId || '', comercialId: salida.comercialId || '',
     clienteId: '', clienteNuevo: null, busqueda: '', resultado: '', lineas: [], conPendiente: false,
-    conMuestras: false, muestras: [], motivoMuestras: '',
+    conMuestras: false, muestras: [], motivoMuestras: '', segMuestras: { seguimiento: '', resultado: '', potencial: '', proximoPaso: '', fecha: '' },
     pendiente: pendienteVacio(hoy), nota: '', origenPendienteId: null, creadaEl: null, ejemplo: false,
   };
 }
@@ -461,6 +461,7 @@ function borradorDeVisita(visita) {
   b.muestras = b.muestras || [];
   b.conMuestras = b.muestras.length > 0;
   b.motivoMuestras = b.motivoMuestras || '';
+  b.segMuestras = Object.assign({ seguimiento: '', resultado: '', potencial: '', proximoPaso: '', fecha: '' }, b.segMuestras);
   [...b.lineas, ...b.pendiente.lineas, ...b.muestras].forEach((l) => { if (!l.cantidad) l.cantidad = ''; });
   return b;
 }
@@ -524,12 +525,22 @@ function resultadosCliente() {
   return titulo + botones + nuevo;
 }
 
+// Arriba del cliente, dos botones (petición de Luis, 11/11): «Cliente» (ya lo
+// era: se elige de la lista) o «Nuevo cliente» (queda como nuevo solo).
+function eleccionCliente(esNuevo) {
+  return `<div class="eleccion-cliente">
+    <button type="button" class="${esNuevo ? '' : 'activo'}"${esNuevo ? ' data-accion="cancelarClienteNuevo"' : ''}>Cliente</button>
+    <button type="button" class="${esNuevo ? 'activo' : ''}"${esNuevo ? '' : ' data-accion="crearCliente"'}>Nuevo cliente</button>
+  </div>`;
+}
+
 function seccionCliente() {
   const b = borrador;
   if (b.clienteId) {
     const c = D.porId(datos.clientes, b.clienteId) || {};
     return `<div class="cliente-elegido">
-      <div><strong>${esc(c.nombre)}</strong><div class="gris pequeno">${esc([c.poblacion, c.provincia, c.zona].filter(Boolean).join(' · '))}</div></div>
+      <div><strong>${esc(c.nombre)}</strong><div class="gris pequeno">${esc([c.poblacion, c.provincia, c.zona].filter(Boolean).join(' · '))}</div>
+        ${c.nuevo === 'Sí' ? `<div class="etiqueta-nuevo">Cliente nuevo${c.altaEl ? ' · alta ' + esc(D.fechaES(c.altaEl)) : ''}</div>` : ''}</div>
       <div class="botones-cliente">
         <button type="button" data-accion="corregirCliente">Corregir</button>
         <button type="button" data-accion="cambiarCliente">Cambiar</button>
@@ -538,7 +549,7 @@ function seccionCliente() {
   }
   if (b.clienteNuevo) {
     const n = b.clienteNuevo;
-    return `
+    return `${eleccionCliente(true)}
       <label>Nombre del local<input data-campo="clienteNuevo.nombre" value="${esc(n.nombre)}" autocomplete="off"></label>
       <label>Tipo<select data-campo="clienteNuevo.tipo"><option value="">—</option>${opcionesTexto(TIPOS_CLIENTE, n.tipo)}</select></label>
       <label>Población<input data-campo="clienteNuevo.poblacion" value="${esc(n.poblacion)}" list="lista-poblaciones" autocomplete="off"></label>
@@ -547,11 +558,10 @@ function seccionCliente() {
         <label>Zona<input data-campo="clienteNuevo.zona" value="${esc(n.zona)}" list="lista-zonas" autocomplete="off"></label>
       </div>
       <label>Contacto (opcional)<input data-campo="clienteNuevo.contacto" value="${esc(n.contacto)}" placeholder="Persona o teléfono" autocomplete="off"></label>
-      <label class="casilla"><input type="checkbox" data-campo="clienteNuevo.esNuevo"${n.esNuevo ? ' checked' : ''}>Es un cliente nuevo para la bodega</label>
-      <button type="button" class="ancho" data-accion="cancelarClienteNuevo">Mejor elegir uno de la lista</button>
+      <label class="casilla"><input type="checkbox" data-campo="clienteNuevo.esNuevo"${n.esNuevo ? ' checked' : ''}>Cuenta como cliente nuevo (lo haces tú por primera vez o acaba de abrir)</label>
       ${listasSugerencias()}`;
   }
-  return `<input type="search" data-campo="busqueda" value="${esc(b.busqueda)}" placeholder="Busca por nombre o población" autocomplete="off">
+  return `${eleccionCliente(false)}<input type="search" data-campo="busqueda" value="${esc(b.busqueda)}" placeholder="Busca por nombre o población" autocomplete="off">
     <div id="resultados-cliente" class="lista-clientes" style="margin-top:10px">${resultadosCliente()}</div>`;
 }
 
@@ -640,7 +650,17 @@ function pantallaVisita() {
       <label class="casilla"><input type="checkbox" data-campo="conMuestras"${b.conMuestras ? ' checked' : ''}>He dejado muestras</label>
       ${b.conMuestras ? `<h3>Muestras</h3>
       ${seccionLineas('muestras', b.muestras, false)}
-      <label>Para qué (opcional)<input data-campo="motivoMuestras" value="${esc(b.motivoMuestras)}" placeholder="Ej.: para probar en carta" autocomplete="off"></label>` : ''}
+      <label>Para qué (opcional)<input data-campo="motivoMuestras" value="${esc(b.motivoMuestras)}" placeholder="Ej.: para probar en carta" autocomplete="off"></label>
+      <details class="mas-filtros"${Object.values(b.segMuestras).some(Boolean) ? ' open' : ''}>
+        <summary>Seguimiento de las muestras (cuando lo haya)</summary>
+        <label>Seguimiento hecho<input data-campo="segMuestras.seguimiento" value="${esc(b.segMuestras.seguimiento)}" placeholder="Ej.: llamada el 20/11" autocomplete="off"></label>
+        <label>Resultado<input data-campo="segMuestras.resultado" value="${esc(b.segMuestras.resultado)}" placeholder="Ej.: lo mete en carta" autocomplete="off"></label>
+        <label>Potencial €<input type="number" inputmode="decimal" min="0" step="any" data-campo="segMuestras.potencial" value="${esc(b.segMuestras.potencial)}"></label>
+        <div class="dos-columnas">
+          <label>Próximo paso<input data-campo="segMuestras.proximoPaso" value="${esc(b.segMuestras.proximoPaso)}" autocomplete="off"></label>
+          <label>Fecha<input type="date" data-campo="segMuestras.fecha" value="${esc(b.segMuestras.fecha)}"></label>
+        </div>
+      </details>` : ''}
     </section>
 
     <section class="tarjeta">
@@ -717,6 +737,11 @@ async function guardarVisitaFormulario() {
     nota: b.nota.trim(), origenPendienteId: b.origenPendienteId || null, creadaEl: b.creadaEl || new Date().toISOString(),
     muestras, motivoMuestras: muestras.length ? b.motivoMuestras.trim() : '',
   };
+  // Seguimiento de las muestras: solo si hay muestras y algo apuntado.
+  const seg = {};
+  for (const [k, x] of Object.entries(b.segMuestras || {})) if (String(x || '').trim()) seg[k] = String(x).trim();
+  if (seg.potencial) seg.potencial = Math.max(0, parseFloat(seg.potencial.replace(',', '.')) || 0) || '';
+  if (muestras.length && Object.values(seg).some(Boolean)) visita.segMuestras = seg;
   if (visita.pendiente) {
     // Importe y probabilidad solo se guardan si se han puesto.
     const numero = (x, tope) => Math.min(tope, Math.max(0, parseFloat(String(x || '').replace(',', '.')) || 0));
@@ -765,14 +790,17 @@ function pantallaReunion() {
   const lista = (tipo) => {
     const ficha = D.FICHAS_REUNION[tipo];
     const filas = (r[tipo] || []).map((f, i) => {
-      const extra = [f.prioridad && `Prioridad ${f.prioridad}`, f.estado, f.fecha && D.fechaES(f.fecha)].filter(Boolean).join(' · ');
+      const extra = [f.prioridad && `Prioridad ${f.prioridad}`, f.situacion, f.marca && f.marca !== f[ficha.principal] && f.marca, f.estado,
+        f.fecha && D.fechaES(f.fecha), f.plazo && D.fechaES(f.plazo)].filter(Boolean).join(' · ');
       return `<button type="button" class="fila-reunion" data-accion="editarFilaReunion" data-tipo="${tipo}" data-i="${i}">
         <strong>${esc(f[ficha.principal])}</strong>${extra ? `<span class="gris pequeno">${esc(extra)}</span>` : ''}</button>`;
     }).join('');
     return `<section class="tarjeta">
       <h2>${esc(ficha.titulo)}</h2>
+      ${ficha.nota ? `<p class="gris pequeno">${esc(ficha.nota)}</p>` : ''}
       ${filas || '<p class="gris pequeno">Nada apuntado.</p>'}
       <button type="button" class="ancho" data-accion="editarFilaReunion" data-tipo="${tipo}" data-i="-1">+ Añadir ${esc(ficha.una)}</button>
+      ${tipo === 'marcas' ? `<p class="gris pequeno">Distribuidores que han vendido cada marca este bimestre: ${esc(D.MARCAS.map((m) => `${m} ${z.activosPorMarca[m]}`).join(' · '))}.</p>` : ''}
     </section>`;
   };
   const prioridades = (r.prioridades || []).filter(Boolean);
@@ -788,10 +816,17 @@ function pantallaReunion() {
       <h2>Sale solo de las visitas</h2>
       <p>${t.visitas} visitas: ${t.vendido || 0} con venta, ${t.pendiente || 0} pendientes y ${t.sin_interes || 0} sin interés. Vendido: ${t.botellas} botellas y ${t.cajas} cajas.</p>
       <p>Puntos de venta nuevos: ${z.clientesNuevos.length}${z.clientesNuevos.length ? ` (${esc(z.clientesNuevos.map((c) => c.nombre).join(', '))})` : ''}.</p>
-      <p>Visitas con muestras: ${z.conMuestras.length}. Oportunidades abiertas ahora: ${z.abiertas.length}. Distribuidores potenciales e importadores: ${z.potenciales.length}.</p>
-      <p class="gris pequeno">Las ventas en euros, la facturación y los cobros los pone la oficina.</p>
+      <p>Muestras: ${z.unidadesMuestras} en ${z.conMuestras.length} visitas. Oportunidades abiertas ahora: ${z.abiertas.length}.</p>
+      <p>Distribuidores potenciales: ${z.nuevosPotenciales.length}. Importadores contactados: ${z.importadoresContactados.length}.</p>
+      <p class="gris pequeno">Las ventas en euros, los pedidos y los objetivos no los sabe la app: si te los pasa la oficina, apúntalos tú en cada apartado.</p>
     </section>
 
+    ${lista('cuadro')}
+    ${lista('distribuidores')}
+    ${lista('clientes')}
+    ${lista('oportunidades')}
+    ${lista('muestras')}
+    ${lista('marcas')}
     ${lista('acciones')}
     ${lista('compromisos')}
     ${lista('alertas')}
@@ -800,9 +835,11 @@ function pantallaReunion() {
       <h2>Mensaje y cierre del bimestre</h2>
       ${r.mensaje ? `<p><b>Mensaje principal:</b> ${esc(r.mensaje)}</p>` : ''}
       ${r.conclusion ? `<p><b>Conclusión:</b> ${esc(r.conclusion)}</p>` : ''}
+      ${r.previsionAno ? `<p><b>Previsión cierre año:</b> ${esc(r.previsionAno)} €</p>` : ''}
+      ${r.objetivoBimestre || r.objetivoAcumulado ? `<p><b>Objetivos:</b> ${esc([r.objetivoBimestre && `bimestre ${r.objetivoBimestre} €`, r.objetivoAcumulado && `acumulado ${r.objetivoAcumulado} €`].filter(Boolean).join(' · '))}</p>` : ''}
       ${prioridades.length ? `<p><b>3 prioridades:</b></p><ol>${prioridades.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}
-      ${!r.mensaje && !r.conclusion && !prioridades.length ? '<p class="gris pequeno">Nada apuntado.</p>' : ''}
-      <button type="button" class="ancho" data-accion="editarCierre">${r.mensaje || r.conclusion || prioridades.length ? 'Cambiar' : 'Escribir'} mensaje y cierre</button>
+      ${!r.mensaje && !r.conclusion && !r.previsionAno && !prioridades.length ? '<p class="gris pequeno">Nada apuntado.</p>' : ''}
+      <button type="button" class="ancho" data-accion="editarCierre">${r.mensaje || r.conclusion || r.previsionAno || prioridades.length ? 'Cambiar' : 'Escribir'} mensaje y cierre</button>
     </section>
 
     <button class="principal ancho" data-accion="descargarReunion">Descargar para el Excel</button>
@@ -816,7 +853,8 @@ async function editarFilaReunion(tipo, i) {
   const fila = i >= 0 ? (r[tipo] || [])[i] : null;
   if (i >= 0 && !fila) return;
   const valor = (clave) => (fila ? fila[clave] : '') || '';
-  const cuerpo = ficha.campos.filter(([, , clase]) => clase !== 'direccion').map(([clave, etiqueta, clase]) => {
+  const cuerpo = ficha.campos.map(([clave, etiqueta, clase]) => {
+    if (clase === 'distribuidor') return `<label>${esc(etiqueta)}<select name="${clave}"><option value="">—</option>${opcionesTexto(ordenar(datos.distribuidores).map((d) => d.nombre), valor(clave))}</select></label>`;
     if (Array.isArray(clase)) return `<label>${esc(etiqueta)}<select name="${clave}"><option value="">—</option>${opcionesTexto(clase, valor(clave))}</select></label>`;
     if (clase === 'largo') return `<label>${esc(etiqueta)}<textarea name="${clave}">${esc(valor(clave))}</textarea></label>`;
     if (clase === 'fecha') return `<label>${esc(etiqueta)}<input type="date" name="${clave}" value="${esc(valor(clave))}"></label>`;
@@ -826,9 +864,9 @@ async function editarFilaReunion(tipo, i) {
   }).join('');
   const botones = [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }];
   if (fila) botones.unshift({ valor: 'borrar', texto: 'Borrar', clase: 'peligro' });
-  const { boton, valores } = await abrirDialogo(fila ? `Editar ${ficha.una}` : `Nueva ${ficha.una}`.replace('Nueva compromiso', 'Nuevo compromiso'), cuerpo, botones);
+  const { boton, valores } = await abrirDialogo(fila ? `Editar ${ficha.una}` : `${ficha.genero === 'm' ? 'Nuevo' : 'Nueva'} ${ficha.una}`, cuerpo, botones);
   if (boton === 'borrar') {
-    if (!confirm(`¿Borrar esta ${ficha.una}?`.replace('esta compromiso', 'este compromiso'))) return;
+    if (!confirm(`¿Borrar ${ficha.genero === 'm' ? 'este' : 'esta'} ${ficha.una}?`)) return;
     const rr = reunionParaGuardar();
     rr[tipo].splice(i, 1);
   } else if (boton === 'guardar') {
@@ -845,12 +883,22 @@ async function editarCierre() {
   const p = r.prioridades || [];
   const cuerpo = `<label>Mensaje principal del bimestre<textarea name="mensaje">${esc(r.mensaje)}</textarea></label>
     <label>Conclusión del bimestre<textarea name="conclusion">${esc(r.conclusion)}</textarea></label>
+    <div class="dos-columnas">
+      <label>Fecha de la reunión<input type="date" name="fechaReunion" value="${esc(r.fechaReunion || '')}"></label>
+      ${campo('Responsable', 'responsable', r.responsable || D.RESPONSABLE)}
+    </div>
+    <div class="dos-columnas">
+      ${campo('Objetivo bimestre €', 'objetivoBimestre', r.objetivoBimestre || '', 'type="number" inputmode="decimal" min="0" step="any"')}
+      ${campo('Objetivo acumulado €', 'objetivoAcumulado', r.objetivoAcumulado || '', 'type="number" inputmode="decimal" min="0" step="any"')}
+    </div>
+    ${campo('Previsión cierre año €', 'previsionAno', r.previsionAno || '', 'type="number" inputmode="decimal" min="0" step="any"')}
     <h3>3 prioridades hasta la siguiente reunión</h3>
     ${[0, 1, 2].map((n) => campo(`Prioridad ${n + 1}`, `prioridad${n}`, p[n] || '')).join('')}`;
   const { boton, valores } = await abrirDialogo(`Cierre ${D.bimestreNombre(periodoReunion)}`, cuerpo,
     [{ valor: 'cancelar', texto: 'Cancelar' }, { valor: 'guardar', texto: 'Guardar', clase: 'principal' }]);
   if (boton !== 'guardar') return;
-  Object.assign(reunionParaGuardar(), { mensaje: valores.mensaje, conclusion: valores.conclusion, prioridades: [valores.prioridad0, valores.prioridad1, valores.prioridad2] });
+  Object.assign(reunionParaGuardar(), { mensaje: valores.mensaje, conclusion: valores.conclusion, previsionAno: valores.previsionAno, fechaReunion: valores.fechaReunion, responsable: valores.responsable,
+    objetivoBimestre: valores.objetivoBimestre, objetivoAcumulado: valores.objetivoAcumulado, prioridades: [valores.prioridad0, valores.prioridad1, valores.prioridad2] });
   if (await guardar()) { aviso('Guardado'); repintar(); }
 }
 
@@ -1202,6 +1250,19 @@ async function editarDistribuidor(id) {
       <label>Estado<select name="estado"><option value="">—</option>${opcionesTexto(D.ESTADOS_DISTRIBUIDOR, d.estado || '')}</select></label>
       <label>Tipo<select name="tipo"><option value="">—</option>${opcionesTexto(D.TIPOS_DISTRIBUIDOR, d.tipo || '')}</select></label>
     </div>
+    <details class="mas-filtros"${d.importe || d.probabilidad || d.proximaAccion || d.ultimoContacto || d.observaciones ? ' open' : ''}>
+      <summary>Para la reunión (opcional)</summary>
+      <div class="dos-columnas">
+        ${campo('Oportunidad €', 'importe', d.importe || '', 'type="number" inputmode="decimal" min="0" step="any"')}
+        ${campo('Probabilidad %', 'probabilidad', d.probabilidad || '', 'type="number" inputmode="numeric" min="0" max="100" step="5"')}
+      </div>
+      <label>Último contacto (llamada, correo…)<input type="date" name="ultimoContacto" value="${esc(d.ultimoContacto || '')}"></label>
+      <div class="dos-columnas">
+        ${campo('Próxima acción', 'proximaAccion', d.proximaAccion || '')}
+        <label>Fecha próxima<input type="date" name="fechaProxima" value="${esc(d.fechaProxima || '')}"></label>
+      </div>
+      <label>Observaciones<textarea name="observaciones">${esc(d.observaciones || '')}</textarea></label>
+    </details>
     <label>Contactos<textarea name="contactos" placeholder="Nombre <correo>; …">${esc(d.contactos || '')}</textarea></label>
     <h3>Comerciales</h3>
     <div id="filas-comerciales">${filas}</div>
@@ -1227,7 +1288,11 @@ async function editarDistribuidor(id) {
   }
   if (boton !== 'guardar') return null;
   if (!valores.nombre) { aviso('Falta el nombre del distribuidor.', true); return null; }
-  Object.assign(d, { nombre: valores.nombre, provincia: valores.provincia, zona: valores.zona, pais: valores.pais, contactos: valores.contactos, estado: valores.estado, tipo: valores.tipo });
+  Object.assign(d, { nombre: valores.nombre, provincia: valores.provincia, zona: valores.zona, pais: valores.pais, contactos: valores.contactos, estado: valores.estado, tipo: valores.tipo,
+    importe: Math.max(0, parseFloat(String(valores.importe).replace(',', '.')) || 0) || '',
+    probabilidad: Math.min(100, Math.max(0, Math.round(parseFloat(valores.probabilidad) || 0))) || '',
+    ultimoContacto: valores.ultimoContacto, proximaAccion: valores.proximaAccion, fechaProxima: valores.fechaProxima, observaciones: valores.observaciones });
+  for (const k of ['importe', 'probabilidad', 'ultimoContacto', 'proximaAccion', 'fechaProxima', 'observaciones']) if (!d[k]) delete d[k];
   if (esNuevo) datos.distribuidores.push(d);
 
   const noBorrables = [];
@@ -1488,7 +1553,7 @@ const acciones = {
   },
   crearCliente() {
     const zona = ultimaZona(borrador.distribuidorId);
-    borrador.clienteNuevo = { nombre: borrador.busqueda.trim(), tipo: '', poblacion: '', provincia: zona.provincia, zona: zona.zona, contacto: '' };
+    borrador.clienteNuevo = { nombre: borrador.busqueda.trim(), tipo: '', poblacion: '', provincia: zona.provincia, zona: zona.zona, contacto: '', esNuevo: true };
     repintar();
     const nombre = document.querySelector('[data-campo="clienteNuevo.nombre"]');
     if (nombre) (borrador.clienteNuevo.nombre ? document.querySelector('[data-campo="clienteNuevo.poblacion"]') : nombre).focus();

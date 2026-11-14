@@ -282,7 +282,8 @@ const COLUMNAS_CSV = [
 function celdaCSV(valor) {
   let texto = valor === null || valor === undefined ? '' : String(valor);
   // Un texto que empieza por = + - @ Excel lo trataría como fórmula.
-  if (/^[=+\-@]/.test(texto)) texto = "'" + texto;
+  // (Un número negativo como «-56,3 %» no es peligroso y se deja tal cual.)
+  if (/^[=+\-@]/.test(texto) && !/^-\d[\d.,]*( ?%)?$/.test(texto)) texto = "'" + texto;
   if (/[";\r\n]/.test(texto)) texto = '"' + texto.replace(/"/g, '""') + '"';
   return texto;
 }
@@ -344,14 +345,89 @@ function bimestreNombre(periodo) {
   return `${MESES_CORTOS[m - 1]}-${MESES_CORTOS[m]} ${a}`;
 }
 
-// Fichas que Luis rellena a mano. Los campos van en el MISMO orden que las
-// columnas del Excel; los de tipo 'direccion' los rellena Dirección en la
-// reunión: no salen en el móvil y se descargan vacíos.
+// Fichas que Luis rellena a mano (también lo que le pida a la oficina: la app
+// NO trae datos de ningún otro sitio). Los campos van en el MISMO orden que
+// las columnas del Excel. 'variacion' no se escribe: se calcula con la venta
+// actual y la anterior que haya puesto Luis.
 const ESTADOS_ACCION = ['Hecho', 'En curso', 'No hecho'];
+
+// Marcas tal como van en el apartado 6 del Excel. Los Pezium y los licores
+// van en «Otra / nuevas» (así lo pone la propia hoja).
+const MARCAS = ['La Ola', 'Envidiacochina', 'Flor de Carme', 'Amodiño', 'Flor de Carme Millésime', 'Vilaxoán', 'La Coartada', 'Otra / nuevas'];
+function marcaDeVino(nombre) {
+  const n = normalizar(nombre);
+  if (n.includes('pezium')) return 'Otra / nuevas';
+  if (n.startsWith('flor de carme millesime')) return 'Flor de Carme Millésime';
+  const marca = MARCAS.find((m) => n.startsWith(normalizar(m)));
+  return marca || 'Otra / nuevas';
+}
+
+// Las 12 filas del cuadro de mando (apartado 1).
+const INDICADORES = [
+  'Ventas acumuladas (€)', 'Evolución ventas (%)', 'Distribuidores activos', 'Pedidos / reposiciones', 'Nuevos puntos de venta',
+  'Clientes que crecen', 'Clientes que disminuyen', 'Clientes que dejan de comprar', 'Oportunidades abiertas',
+  'Nuevos distribuidores potenciales', 'Importadores contactados', 'Muestras utilizadas / enviadas',
+];
 const PRIORIDADES = ['1', '2', '3', '4', '5'];
 const FICHAS_REUNION = {
+  cuadro: {
+    titulo: '1. Cuadro de mando: previsión y acción por indicador', una: 'indicador', genero: 'm', principal: 'indicador',
+    campos: [
+      ['indicador', 'Indicador', INDICADORES], ['actual', 'Actual (si no, lo cuenta la app)'], ['anterior', 'Informe anterior'],
+      ['objetivo', 'Objetivo'], ['avance', 'Variación / avance (si lo dejas vacío, lo calcula la app)'], ['prevision', 'Previsión'], ['gap', 'Gap al objetivo'], ['estado', 'Estado'],
+      ['explica', 'Qué explica el dato', 'largo'], ['accion', 'Acción comercial'], ['responsable', 'Responsable', 'responsable'],
+      ['plazo', 'Plazo', 'fecha'],
+    ],
+  },
+  clientes: {
+    titulo: '3. Clientes: crecimiento, disminución y pérdida', una: 'cliente', genero: 'm', principal: 'cliente',
+    campos: [
+      ['cliente', 'Cliente / PDV'], ['distribuidor', 'Distribuidor'], ['marca', 'Marca principal', MARCAS],
+      ['ventaActual', 'Venta actual €', 'numero'], ['ventaAnterior', 'Venta anterior €', 'numero'], ['variacion', 'Variación % (si lo dejas vacío, lo calcula la app)', 'variacion'],
+      ['situacion', 'Situación', ['Crece', 'Disminuye', 'Deja de comprar', 'Nuevo']], ['causa', 'Causa', 'largo'],
+      ['potencial', 'Potencial'], ['accion', 'Acción'], ['responsable', 'Responsable', 'responsable'], ['plazo', 'Plazo', 'fecha'],
+    ],
+  },
+  marcas: {
+    titulo: '6. Evolución de cada marca y previsión de ventas', una: 'marca', genero: 'f', principal: 'marca',
+    campos: [
+      ['marca', 'Marca', MARCAS], ['ventaActual', 'Venta actual €', 'numero'], ['ventaAnterior', 'Venta anterior €', 'numero'],
+      ['objetivo', 'Objetivo €', 'numero'], ['gap', 'Gap €', 'numero'], ['previsionBimestre', 'Previsión próximo bimestre €', 'numero'],
+      ['previsionAno', 'Previsión cierre año €', 'numero'], ['activos', 'Distribuidores activos (si lo dejas vacío, lo calcula la app)'], ['lectura', 'Lectura comercial', 'largo'],
+      ['accion', 'Acción prioritaria'], ['responsable', 'Responsable', 'responsable'],
+    ],
+  },
+  distribuidores: {
+    titulo: '2. Distribuidores: ventas y pedidos', una: 'distribuidor', genero: 'm', principal: 'distribuidor',
+    campos: [
+      ['distribuidor', 'Distribuidor', 'distribuidor'], ['ventaActual', 'Venta actual €', 'numero'], ['ventaAnterior', 'Venta anterior €', 'numero'],
+      ['variacion', 'Variación % (si lo dejas vacío, lo calcula la app)', 'variacion'], ['pedidos', 'Pedidos', 'numero'], ['reposiciones', 'Reposiciones', 'numero'],
+      ['ultimoPedido', 'Último pedido', 'fecha'], ['nuevosPdv', 'Nuevos PDV (si lo dejas vacío, lo calcula la app)'], ['estado', 'Estado (si lo dejas vacío, lo calcula la app)'],
+      ['proximaAccion', 'Próxima acción (si lo dejas vacío, lo calcula la app)'], ['responsable', 'Responsable', 'responsable'],
+    ],
+  },
+  oportunidades: {
+    titulo: '4. Otras oportunidades, distribuidores potenciales e importadores', una: 'oportunidad', genero: 'f', principal: 'empresa',
+    nota: 'Los pendientes de las visitas y los distribuidores marcados como potenciales o importadores ya salen solos. Aquí, lo demás.',
+    campos: [
+      ['empresa', 'Empresa / contacto'], ['zona', 'País / zona'], ['tipo', 'Tipo'], ['importe', 'Oportunidad €', 'numero'],
+      ['probabilidad', 'Probabilidad %', 'numero'], ['ponderada', 'Previsión ponderada € (si lo dejas vacío, lo calcula la app)', 'ponderada'], ['fase', 'Fase'],
+      ['ultimoContacto', 'Último contacto', 'fecha'], ['proximaAccion', 'Próxima acción'], ['fechaProxima', 'Fecha próxima', 'fecha'],
+      ['responsable', 'Responsable', 'responsable'], ['observaciones', 'Observaciones', 'largo'],
+    ],
+  },
+  muestras: {
+    titulo: '5. Otras muestras (envíos, ferias, D.O.…)', una: 'muestra', genero: 'f', principal: 'destinatario',
+    nota: 'Las muestras que dejas en las visitas ya salen solas. Aquí, las que no van en una visita.',
+    campos: [
+      ['destinatario', 'Destinatario'], ['mercado', 'Mercado'], ['marca', 'Marca / añada'], ['unidades', 'Unidades', 'numero'],
+      ['fecha', 'Fecha envío/entrega', 'fecha'], ['motivo', 'Motivo'], ['seguimiento', 'Seguimiento realizado', 'largo'],
+      ['resultado', 'Resultado'], ['potencial', 'Potencial €', 'numero'], ['proximoPaso', 'Próximo paso'], ['fechaPaso', 'Fecha', 'fecha'],
+      ['responsable', 'Responsable', 'responsable'],
+    ],
+  },
   acciones: {
-    titulo: '7. Acciones realizadas desde la reunión anterior y resultado', una: 'acción realizada', principal: 'accion',
+    titulo: '7. Acciones realizadas desde la reunión anterior y resultado', una: 'acción realizada', genero: 'f', principal: 'accion',
     campos: [
       ['accion', 'Acción acordada'], ['objetivo', 'Objetivo'], ['fecha', 'Fecha compromiso', 'fecha'],
       ['responsable', 'Responsable', 'responsable'], ['estado', 'Estado', ESTADOS_ACCION], ['hecho', 'Qué se hizo', 'largo'],
@@ -361,30 +437,30 @@ const FICHAS_REUNION = {
     ],
   },
   compromisos: {
-    titulo: '8. Acciones concretas comprometidas hasta la siguiente reunión', una: 'compromiso', principal: 'accion',
+    titulo: '8. Acciones concretas comprometidas hasta la siguiente reunión', una: 'compromiso', genero: 'm', principal: 'accion',
     campos: [
       ['prioridad', 'Prioridad', PRIORIDADES], ['accion', 'Acción concreta'], ['objetivo', 'Objetivo medible'],
       ['marca', 'Marca / mercado'], ['cliente', 'Cliente / distribuidor'], ['responsable', 'Responsable', 'responsable'],
       ['fecha', 'Fecha límite', 'fecha'], ['indicador', 'Indicador de éxito'], ['recursos', 'Recursos necesarios'],
       ['dependencias', 'Dependencias'], ['estado', 'Estado', ['Pendiente', 'En curso', 'Hecho']],
-      ['resultadoProxima', 'Resultado próxima reunión', 'direccion'],
+      ['resultadoProxima', 'Resultado próxima reunión'],
     ],
   },
   alertas: {
-    titulo: '9. Alertas que requieren decisión de Dirección', una: 'alerta', principal: 'alerta',
+    titulo: '9. Alertas que requieren decisión de Dirección', una: 'alerta', genero: 'f', principal: 'alerta',
     campos: [
       ['prioridad', 'Prioridad', PRIORIDADES], ['alerta', 'Alerta / oportunidad', 'largo'], ['impacto', 'Impacto esperado'],
       ['marca', 'Marca / mercado'], ['cliente', 'Cliente / distribuidor'], ['alternativas', 'Alternativas', 'largo'],
       ['recomendacion', 'Recomendación Comercial', 'largo'], ['decisionSolicitada', 'Decisión solicitada', 'largo'],
-      ['decisionTomada', 'Decisión tomada', 'direccion'], ['responsable', 'Responsable', 'direccion'],
-      ['fecha', 'Fecha límite', 'direccion'], ['seguimiento', 'Seguimiento', 'direccion'],
+      ['decisionTomada', 'Decisión tomada'], ['responsable', 'Responsable', 'responsable'],
+      ['fecha', 'Fecha límite', 'fecha'], ['seguimiento', 'Seguimiento', 'largo'],
     ],
   },
 };
 const RESPONSABLE = 'Luis Lado';
 
 function reunionVacia(periodo) {
-  return { id: periodo, periodo, mensaje: '', conclusion: '', prioridades: ['', '', ''], acciones: [], compromisos: [], alertas: [] };
+  return { id: periodo, periodo, mensaje: '', conclusion: '', previsionAno: '', responsable: '', fechaReunion: '', objetivoBimestre: '', objetivoAcumulado: '', distribuidores: [], prioridades: ['', '', ''], cuadro: [], clientes: [], oportunidades: [], muestras: [], marcas: [], acciones: [], compromisos: [], alertas: [] };
 }
 
 function reunionDe(datos, periodo) {
@@ -393,7 +469,9 @@ function reunionDe(datos, periodo) {
 
 // Último día con visita o salida de agenda (hasta 'hoy') y la próxima salida.
 function contactosDistribuidor(datos, distribuidorId, hoy) {
+  const d = porId(datos.distribuidores, distribuidorId) || {};
   const fechas = [
+    ...(d.ultimoContacto ? [d.ultimoContacto] : []),
     ...datos.visitas.filter((v) => v.distribuidorId === distribuidorId).map((v) => v.fecha),
     ...datos.agenda.filter((s) => s.distribuidorId === distribuidorId && s.fecha && s.fecha <= hoy).map((s) => s.fecha),
   ].sort();
@@ -410,7 +488,34 @@ function resumenReunion(datos, periodo, hoy) {
   const abiertas = pendientesAbiertas(datos);
   const distribuidores = datos.distribuidores.filter((d) => d.estado || visitas.some((v) => v.distribuidorId === d.id));
   const potenciales = datos.distribuidores.filter((d) => d.estado === 'Potencial' || d.tipo === 'Importador');
-  return { desde, hasta, visitas, clientesNuevos, conMuestras, abiertas, distribuidores, potenciales, totales: totales(datos, visitas) };
+  const nuevosPotenciales = datos.distribuidores.filter((d) => d.estado === 'Potencial' && d.tipo !== 'Importador');
+  const enPeriodo = (f) => f && f >= desde && f <= hasta;
+  const importadoresContactados = datos.distribuidores.filter((d) => d.tipo === 'Importador' &&
+    (enPeriodo(d.ultimoContacto) || visitas.some((v) => v.distribuidorId === d.id) ||
+     datos.agenda.some((s) => s.distribuidorId === d.id && enPeriodo(s.fecha) && s.fecha <= hoy)));
+  const unidadesMuestras = conMuestras.reduce((t, v) => t + v.muestras.reduce((u, l) => u + (Number(l.cantidad) || 0), 0), 0);
+  // Distribuidores que han vendido cada marca en el bimestre (según las visitas).
+  const activosPorMarca = {};
+  for (const m of MARCAS) activosPorMarca[m] = new Set();
+  for (const v of visitas) for (const l of v.lineas || []) activosPorMarca[marcaDeVino(nombreVino(datos, l.vinoId))].add(v.distribuidorId);
+  for (const m of MARCAS) activosPorMarca[m] = activosPorMarca[m].size;
+  return { desde, hasta, visitas, clientesNuevos, conMuestras, abiertas, distribuidores, potenciales, nuevosPotenciales,
+    importadoresContactados, unidadesMuestras, activosPorMarca, totales: totales(datos, visitas) };
+}
+
+// Números para el Excel en español: coma decimal. Vacío si no hay número.
+function numeroES(x) {
+  if (x === null || x === undefined || x === '') return '';
+  const n = typeof x === 'number' ? x : parseFloat(String(x).replace(',', '.'));
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100).replace('.', ',') : String(x);
+}
+
+// Variación % entre dos cifras que haya puesto Luis. Vacío si falta alguna.
+function variacion(actual, anterior) {
+  const a = parseFloat(String(actual || '').replace(',', '.'));
+  const b = parseFloat(String(anterior || '').replace(',', '.'));
+  if (!Number.isFinite(a) || !Number.isFinite(b) || !b) return '';
+  return numeroES(Math.round(((a - b) / b) * 1000) / 10) + ' %';
 }
 
 function unidades(lineas) {
@@ -430,23 +535,68 @@ function exportarReunion(datos, periodo, hoy) {
   const filas = [];
   const bloque = (titulo, cabecera, cuerpo) => { filas.push([titulo], cabecera, ...cuerpo, []); };
 
-  filas.push([`Informe bimestral · Comercial · ${bimestreNombre(periodo)}`], ['Periodo', bimestreNombre(periodo), 'Responsable', RESPONSABLE], []);
+  const valorFicha = (fila, clave, clase) => {
+    if (clase === 'variacion') return fila[clave] || variacion(fila.ventaActual, fila.ventaAnterior);
+    if (clase === 'ponderada') {
+      const i = parseFloat(String(fila.importe || '').replace(',', '.')); const p = parseFloat(String(fila.probabilidad || '').replace(',', '.'));
+      return fila[clave] || (i && p ? numeroES(Math.round(i * p) / 100) : '');
+    }
+    if (clase === 'fecha') return fila[clave] ? fechaES(fila[clave]) : '';
+    if (clase === 'numero') return numeroES(fila[clave]);
+    return fila[clave] || '';
+  };
+  const filasFicha = (tipo) => (r[tipo] || []).map((fila) => FICHAS_REUNION[tipo].campos.map(([clave, , clase]) => valorFicha(fila, clave, clase)));
+  const fichaGenerica = (tipo) => {
+    const ficha = FICHAS_REUNION[tipo];
+    bloque(ficha.titulo, ficha.campos.map((c) => c[1].replace(' (si lo dejas vacío, lo calcula la app)', '')), filasFicha(tipo));
+  };
+
+  filas.push([`Informe bimestral · Comercial · ${bimestreNombre(periodo)}`], []);
+  bloque('Cabecera', ['Periodo', 'Fecha reunión', 'Responsable', 'Objetivo bimestre €', 'Objetivo acumulado €', 'Previsión cierre año €'],
+    [[bimestreNombre(periodo), r.fechaReunion ? fechaES(r.fechaReunion) : '', r.responsable || RESPONSABLE, numeroES(r.objetivoBimestre), numeroES(r.objetivoAcumulado), numeroES(r.previsionAno)]]);
   bloque('Mensaje principal del bimestre', ['Mensaje principal del bimestre'], [[r.mensaje]]);
   const t = z.totales;
-  bloque('Datos de la app de visitas', ['Visitas', 'Con venta', 'Pendientes', 'Sin interés', 'Vendido', 'Nuevos puntos de venta', 'Oportunidades abiertas', 'Muestras (visitas)'],
-    [[t.visitas, t.vendido || 0, t.pendiente || 0, t.sin_interes || 0, `${t.botellas} bot. + ${t.cajas} cajas`, z.clientesNuevos.length, z.abiertas.length, z.conMuestras.length]]);
+  bloque('Datos de la app de visitas', ['Visitas', 'Con venta', 'Pendientes', 'Sin interés', 'Vendido', 'Nuevos puntos de venta', 'Oportunidades abiertas',
+    'Nuevos distribuidores potenciales', 'Importadores contactados', 'Muestras (visitas)', 'Muestras (unidades)'],
+    [[t.visitas, t.vendido || 0, t.pendiente || 0, t.sin_interes || 0, `${t.botellas} bot. + ${t.cajas} cajas`, z.clientesNuevos.length, z.abiertas.length,
+      z.nuevosPotenciales.length, z.importadoresContactados.length, z.conMuestras.length, z.unidadesMuestras]]);
+
+  // 1. Cuadro de mando: lo que la app cuenta sola + lo que apunte Luis.
+  const actuales = {
+    'Nuevos puntos de venta': z.clientesNuevos.length, 'Oportunidades abiertas': z.abiertas.length,
+    'Nuevos distribuidores potenciales': z.nuevosPotenciales.length, 'Importadores contactados': z.importadoresContactados.length,
+    'Muestras utilizadas / enviadas': z.unidadesMuestras,
+  };
+  bloque('1. Cuadro de mando Comercial',
+    ['Indicador', 'Actual', 'Informe anterior', 'Objetivo', 'Variación / avance', 'Previsión', 'Gap al objetivo', 'Estado', 'Qué explica el dato', 'Acción comercial', 'Responsable', 'Plazo'],
+    INDICADORES.map((ind) => {
+      const f = (r.cuadro || []).find((x) => x.indicador === ind) || {};
+      const actual = f.actual || (actuales[ind] !== undefined ? actuales[ind] : '');
+      return [ind, actual, f.anterior || '', f.objetivo || '', f.avance || variacion(f.actual, f.anterior), f.prevision || '', f.gap || '', f.estado || '', f.explica || '', f.accion || '',
+        f.responsable || '', f.plazo ? fechaES(f.plazo) : ''];
+    }));
 
   bloque('2. Evolución de distribuidores, pedidos y reposiciones',
     ['Distribuidor', 'Zona', 'Venta actual €', 'Venta anterior €', 'Variación %', 'Pedidos', 'Reposiciones', 'Último pedido', 'Nuevos PDV', 'Estado', 'Próxima acción', 'Responsable'],
-    z.distribuidores.map((d) => {
+    [...z.distribuidores, ...datos.distribuidores.filter((d) => !z.distribuidores.includes(d) &&
+      (r.distribuidores || []).some((f) => normalizar(f.distribuidor) === normalizar(d.nombre)))].map((d) => {
+      const f = (r.distribuidores || []).find((x) => normalizar(x.distribuidor) === normalizar(d.nombre)) || {};
       const vs = z.visitas.filter((v) => v.distribuidorId === d.id);
       const pdv = z.clientesNuevos.filter((c) => datos.visitas.some((v) => v.clienteId === c.id && v.distribuidorId === d.id)).length;
       const k = contactosDistribuidor(datos, d.id, hoy);
       const estado = [d.estado, vs.length && `${vs.length} visitas (últ. ${fechaES(vs[vs.length - 1].fecha).slice(0, 5)})`].filter(Boolean).join(' · ');
-      return [d.nombre, [d.provincia, d.zona].filter(Boolean).join(' / '), '', '', '', '', '', '', pdv || '', estado, k.proxima ? `Salida ${fechaES(k.proxima)}` : '', RESPONSABLE];
+      const pend = z.abiertas.filter((v) => v.distribuidorId === d.id);
+      const proxima = d.proximaAccion ? [d.proximaAccion, d.fechaProxima && fechaES(d.fechaProxima)].filter(Boolean).join(' · ')
+        : k.proxima ? `Salida ${fechaES(k.proxima)}`
+        : pend.length ? `Cerrar ${pend.length} ${pend.length === 1 ? 'pendiente' : 'pendientes'} (desde ${fechaES(pend[0].pendiente.fechaPrevista)})` : '';
+      return [d.nombre, [d.provincia, d.zona].filter(Boolean).join(' / ') || d.pais || '', numeroES(f.ventaActual), numeroES(f.ventaAnterior),
+        f.variacion || variacion(f.ventaActual, f.ventaAnterior), numeroES(f.pedidos), numeroES(f.reposiciones), f.ultimoPedido ? fechaES(f.ultimoPedido) : '',
+        f.nuevosPdv || pdv || '', f.estado || estado, f.proximaAccion || proxima, f.responsable || RESPONSABLE];
     }));
 
-  bloque('3. Puntos de venta nuevos (de la app)', ['Cliente / PDV', 'Distribuidor', 'Población', 'Provincia', 'Fecha de alta'],
+  fichaGenerica('clientes');
+
+  bloque('Puntos de venta nuevos (lista de la app)', ['Cliente / PDV', 'Distribuidor', 'Población', 'Provincia', 'Fecha de alta'],
     z.clientesNuevos.map((c) => {
       const v = datos.visitas.find((x) => x.clienteId === c.id);
       return [c.nombre, v ? nombreDist(v.distribuidorId) : '', c.poblacion, c.provincia, fechaES(c.altaEl)];
@@ -458,15 +608,19 @@ function exportarReunion(datos, periodo, hoy) {
         const c = cliente(v.clienteId); const p = v.pendiente;
         const importe = Number(p.importe) || 0; const prob = Number(p.probabilidad) || 0;
         return [`${c.nombre || ''} (${nombreDist(v.distribuidorId)})`, [c.poblacion, c.provincia].filter(Boolean).join(', '), TIPOS_PENDIENTE[p.tipo],
-          importe || '', prob || '', importe && prob ? Math.round(importe * prob) / 100 : '', 'Pendiente', fechaES(v.fecha),
+          numeroES(importe || ''), prob || '', importe && prob ? numeroES(Math.round(importe * prob) / 100) : '', 'Pendiente', fechaES(v.fecha),
           p.detalle || 'Cerrar pedido', fechaES(p.fechaPrevista), RESPONSABLE, describirLineas(datos, p.lineas)];
       }),
       ...z.potenciales.map((d) => {
         const k = contactosDistribuidor(datos, d.id, hoy);
+        const importe = Number(d.importe) || 0; const prob = Number(d.probabilidad) || 0;
+        const fechaProxima = d.fechaProxima || k.proxima;
         return [[d.nombre, d.contactos].filter(Boolean).join(' · '), d.pais || [d.provincia, d.zona].filter(Boolean).join(' / '),
-          d.tipo === 'Importador' ? 'Importador' : 'Distribuidor potencial', '', '', '', d.estado || '', k.ultimo ? fechaES(k.ultimo) : '',
-          k.proxima ? 'Salida' : '', k.proxima ? fechaES(k.proxima) : '', RESPONSABLE, ''];
+          d.tipo === 'Importador' ? 'Importador' : 'Distribuidor potencial', numeroES(importe || ''), prob || '', importe && prob ? numeroES(Math.round(importe * prob) / 100) : '',
+          d.estado || '', k.ultimo ? fechaES(k.ultimo) : '', d.proximaAccion || (k.proxima ? 'Salida' : ''), fechaProxima ? fechaES(fechaProxima) : '',
+          RESPONSABLE, d.observaciones || ''];
       }),
+      ...filasFicha('oportunidades'),
     ]);
 
   bloque('5. Muestras utilizadas y seguimiento',
@@ -474,17 +628,23 @@ function exportarReunion(datos, periodo, hoy) {
     z.conMuestras.map((v) => {
       const c = cliente(v.clienteId);
       return [`${c.nombre || ''} (${nombreDist(v.distribuidorId)})`, c.provincia || '', v.muestras.map((l) => nombreConAnada(datos, l)).join(', '),
-        unidades(v.muestras), fechaES(v.fecha), v.motivoMuestras || '', '', '', '', '', '', RESPONSABLE];
+        unidades(v.muestras), fechaES(v.fecha), v.motivoMuestras || '', ...(() => {
+          const g = v.segMuestras || {};
+          return [g.seguimiento || '', g.resultado || '', numeroES(g.potencial), g.proximoPaso || '', g.fecha ? fechaES(g.fecha) : ''];
+        })(), RESPONSABLE];
+    }).concat(filasFicha('muestras')));
+
+  bloque('6. Evolución de cada marca y previsión de ventas',
+    ['Marca', 'Venta actual €', 'Venta anterior €', 'Variación %', 'Objetivo €', 'Gap €', 'Previsión próximo bimestre €', 'Previsión cierre año €',
+      'Distribuidores activos', 'Lectura comercial', 'Acción prioritaria', 'Responsable'],
+    MARCAS.map((m) => {
+      const f = (r.marcas || []).find((x) => x.marca === m) || {};
+      return [m, numeroES(f.ventaActual), numeroES(f.ventaAnterior), f.variacion || variacion(f.ventaActual, f.ventaAnterior), numeroES(f.objetivo), numeroES(f.gap),
+        numeroES(f.previsionBimestre), numeroES(f.previsionAno), f.activos || z.activosPorMarca[m] || '', f.lectura || '', f.accion || '', f.responsable || ''];
     }));
 
-  for (const tipo of ['acciones', 'compromisos', 'alertas']) {
-    const ficha = FICHAS_REUNION[tipo];
-    bloque(ficha.titulo, ficha.campos.map((c) => c[1]), (r[tipo] || []).map((fila) => ficha.campos.map(([clave, , clase]) => {
-      if (clase === 'direccion') return '';
-      if (clase === 'fecha') return fila[clave] ? fechaES(fila[clave]) : '';
-      return fila[clave] || '';
-    })));
-  }
+  for (const tipo of ['acciones', 'compromisos', 'alertas']) fichaGenerica(tipo);
+
 
   bloque('Cierre Comercial', ['Conclusión del bimestre'], [[r.conclusion]]);
   bloque('3 prioridades hasta la siguiente reunión', ['Prioridad', 'Qué'], (r.prioridades || []).map((x, i) => [i + 1, x]).filter((x) => x[1]));
@@ -782,7 +942,7 @@ const D = {
   totales, agrupar, buscarClientes, clientesRecientes, valoresUsados, exportarCSV, celdaCSV, crearCopia, leerCopia,
   hayEjemplo, cargarEjemplo, borrarEjemplo, guardarVisita, borrarVisita, descartarPendiente, reabrirPendiente,
   posponerPendiente, esPaquete, aplicarPaquete, agendaDelDia, agendaProxima, agendaPasada,
-  bimestreDe, bimestreMover, bimestreLimites, bimestreNombre, FICHAS_REUNION, RESPONSABLE, reunionVacia, reunionDe,
-  contactosDistribuidor, resumenReunion, exportarReunion,
+  bimestreDe, bimestreMover, bimestreLimites, bimestreNombre, FICHAS_REUNION, RESPONSABLE, MARCAS, INDICADORES, marcaDeVino, reunionVacia, reunionDe,
+  contactosDistribuidor, resumenReunion, exportarReunion, numeroES, variacion,
 };
 if (typeof module !== 'undefined') module.exports = D;

@@ -443,3 +443,9 @@ h3 { color: var(--dorado-texto); font-size: 14px; letter-spacing: .06em; text-tr
 .selector-periodo button { min-width: 48px; font-size: 1.4rem; }
 .fila-reunion { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; margin-bottom: 8px; }
 a.boton { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+
+/* «Cliente» o «Nuevo cliente» en la visita */
+.eleccion-cliente { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.eleccion-cliente button { min-height: 52px; font-size: 17px; }
+.eleccion-cliente button.activo { background: var(--primario); border-color: var(--primario); color: #fff; }
+.etiqueta-nuevo { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 10px; background: var(--primario); color: #fff; font-size: 13px; font-weight: 600; }
