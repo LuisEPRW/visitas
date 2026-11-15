@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.18';
+const VERSION_APP = '1.19';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -425,6 +425,9 @@ function pantallaHoy() {
     </section>
     <button class="principal grande" data-accion="nuevaVisita">+ Nueva visita</button>
     <p></p>
+    <a class="boton ancho" href="#evento">+ Feria o evento (botellas que gastas)</a>
+    <p></p>
+    ${D.eventosEntre(datos, hoy, hoy).map(tarjetaEvento).join('')}
     ${urgentes ? `<a class="tarjeta alerta" href="#pendientes">Tienes ${plural(urgentes, 'pendiente', 'pendientes')} para hoy o atrasados&nbsp;›</a>` : ''}
     <h2>Visitas de hoy (${visitasHoy.length})</h2>
     ${visitasHoy.length ? visitasHoy.map((v) => tarjetaVisita(v, false)).join('') : '<p class="vacio">Aún no has apuntado ninguna visita hoy.</p>'}
@@ -432,6 +435,81 @@ function pantallaHoy() {
     <p class="gris pequeno">De otros días. Toca una para cambiarla o borrarla.</p>
     ${ultimas.map((v) => tarjetaVisita(v, true)).join('')}` : ''}
   `;
+}
+
+// ---------- Ferias y EVENTOS (petición de Luis, 15/11) ----------
+// Las botellas que gasta en una feria, showroom o evento de la D.O. No son
+// ventas ni van unidas a un cliente: se cuentan aparte.
+
+function borradorEvento(id) {
+  const e = id && (datos.eventos || []).find((x) => x.id === id);
+  if (e) {
+    const b = JSON.parse(JSON.stringify(e));
+    b.nueva = false;
+    b.lineas.forEach((l) => { if (!l.cantidad) l.cantidad = ''; });
+    return b;
+  }
+  return { id: D.nuevoId(), nueva: true, fecha: D.hoyISO(), tipo: 'Feria', nombre: '', lugar: '', lineas: [], nota: '', creadoEl: null };
+}
+
+function tarjetaEvento(e) {
+  return `<a class="visita evento" href="#evento/${esc(e.id)}">
+    <div class="fila1"><strong>${esc(e.nombre)}</strong><span class="etiqueta evento">${esc(e.tipo || 'Evento')}</span></div>
+    <div class="detalle">${esc(D.describirLineas(datos, e.lineas))}</div>
+    <div class="gris">${esc([D.fechaES(e.fecha), e.lugar, e.nota].filter(Boolean).join(' · '))}</div>
+  </a>`;
+}
+
+function pantallaEvento() {
+  const b = borrador;
+  const nombresUsados = [...new Set((datos.eventos || []).map((e) => e.nombre))].sort((x, y) => x.localeCompare(y, 'es'));
+  return `
+    <div class="titulo-visita"><h1>${b.nueva ? 'Feria o evento' : 'Editar feria o evento'}</h1>${!b.nueva ? '<button class="peligro" data-accion="borrarEvento">Borrar</button>' : ''}</div>
+    <p class="gris pequeno">Las botellas que gastas aquí no cuentan como venta: van aparte, para justificar lo que sacas de la bodega.</p>
+    <section class="tarjeta">
+      <label>Fecha<input type="date" data-campo="fecha" value="${esc(b.fecha)}"></label>
+      <h3>Tipo</h3>
+      <div class="chips">${D.TIPOS_EVENTO.map((t) => `<button type="button" class="chip${b.tipo === t ? ' activo' : ''}" data-accion="tipoEvento" data-valor="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+      <p></p>
+      <label>Nombre<input data-campo="nombre" value="${esc(b.nombre)}" list="lista-eventos" placeholder="Ej.: Castes Vilagarcía" autocomplete="off"></label>
+      <datalist id="lista-eventos">${nombresUsados.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <label>Lugar (opcional)<input data-campo="lugar" value="${esc(b.lugar)}" placeholder="Ej.: Vilagarcía de Arousa" autocomplete="off"></label>
+    </section>
+    <section class="tarjeta">
+      <h2>Botellas que has gastado</h2>
+      ${seccionLineas('lineas', b.lineas, true)}
+    </section>
+    <section class="tarjeta">
+      <label>Nota (opcional)<textarea data-campo="nota" placeholder="Lo que quieras recordar">${esc(b.nota)}</textarea></label>
+    </section>
+    <div class="pie-fijo">
+      <button class="cancelar" data-accion="volver">Cancelar</button>
+      <button class="principal grande" data-accion="guardarEvento">Guardar</button>
+    </div>
+  `;
+}
+
+async function guardarEventoFormulario() {
+  const b = borrador;
+  const lineas = b.lineas.map((l) => ({
+    vinoId: l.vinoId, anada: /^\d{4}$/.test(l.anada || '') ? l.anada : '',
+    cantidad: Math.max(0, parseInt(l.cantidad, 10) || 0), unidad: l.unidad === 'cajas' ? 'cajas' : 'botellas',
+  }));
+  let error = '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b.fecha)) error = 'Pon la fecha.';
+  else if (!b.nombre.trim()) error = 'Pon el nombre de la feria o evento.';
+  else if (!lineas.length) error = 'Apunta qué vinos has gastado.';
+  else if (lineas.some((l) => !l.cantidad)) error = 'Falta la cantidad de algún vino.';
+  if (error) { aviso(error, true); return; }
+  const evento = { id: b.id, fecha: b.fecha, tipo: b.tipo, nombre: b.nombre.trim(), lugar: b.lugar.trim(), lineas, nota: b.nota.trim(), creadoEl: b.creadoEl || new Date().toISOString() };
+  if (!Array.isArray(datos.eventos)) datos.eventos = [];
+  const i = datos.eventos.findIndex((x) => x.id === evento.id);
+  if (i >= 0) datos.eventos[i] = evento; else datos.eventos.push(evento);
+  if (await guardar()) {
+    aviso(`Guardado: ${D.describirLineas(datos, lineas)}`);
+    borrador = null;
+    location.hash = b.nueva ? '#hoy' : rutaAnterior;
+  }
 }
 
 // ---------- Formulario de VISITA ----------
@@ -1032,6 +1110,22 @@ function resultadosConsulta() {
   `;
 }
 
+// Ferias y eventos del año en curso, con el total gastado por vino.
+function seccionEventos() {
+  const ano = D.hoyISO().slice(0, 4);
+  const eventos = D.eventosEntre(datos, `${ano}-01-01`, `${ano}-12-31`);
+  if (!eventos.length && !(datos.eventos || []).length) return '';
+  const g = D.gastoEventos(datos, eventos);
+  const total = [g.botellas && plural(g.botellas, 'botella', 'botellas'), g.cajas && plural(g.cajas, 'caja', 'cajas')].filter(Boolean).join(' y ') || 'nada';
+  return `<details class="tarjeta mas-filtros">
+    <summary>Ferias y eventos ${ano}: ${plural(eventos.length, 'evento', 'eventos')}, ${total}</summary>
+    <p class="gris pequeno">No cuentan como venta. Gastado por vino:</p>
+    <ul>${g.porVino.map((x) => `<li>${esc(x.nombre)}: ${esc([x.botellas && plural(x.botellas, 'botella', 'botellas'), x.cajas && plural(x.cajas, 'caja', 'cajas')].filter(Boolean).join(' y '))}</li>`).join('')}</ul>
+    ${eventos.map(tarjetaEvento).join('')}
+    <button class="ancho" data-accion="exportarEventos">Exportar ferias y eventos a Excel</button>
+  </details>`;
+}
+
 function pantallaConsultar() {
   const periodos = [['hoy', 'Hoy'], ['semana', '7 días'], ['mes', 'Este mes'], ['ano', 'Este año'], ['todo', 'Todo'], ['elegir', 'Elegir fechas']];
   const verPor = [['distribuidor', 'Distribuidor'], ['provincia', 'Provincia'], ['zona', 'Zona'], ['dia', 'Día'], ['cliente', 'Cliente']];
@@ -1040,6 +1134,7 @@ function pantallaConsultar() {
     <p></p>
     <a class="boton ancho" href="#reunion">Reunión bimestral con Dirección →</a>
     <p></p>
+    ${seccionEventos()}
     <section class="tarjeta">
       <div class="chips">
         ${periodos.map(([k, t]) => `<button class="chip${consulta.periodo === k ? ' activo' : ''}" data-accion="periodo" data-valor="${k}">${t}</button>`).join('')}
@@ -1561,6 +1656,17 @@ const acciones = {
   cancelarClienteNuevo() { borrador.clienteNuevo = null; repintar(); },
 
   guardarVisita() { guardarVisitaFormulario(); },
+  tipoEvento(el) { borrador.tipo = el.dataset.valor; repintar(); },
+  guardarEvento() { guardarEventoFormulario(); },
+  async borrarEvento() {
+    if (!confirm('¿Borrar esta feria o evento? No se puede deshacer.')) return;
+    datos.eventos = (datos.eventos || []).filter((x) => x.id !== borrador.id);
+    borrador = null;
+    if (await guardar()) aviso('Borrado');
+    location.hash = rutaAnterior;
+  },
+  exportarEventos() { entregarFichero(`ferias-y-eventos-${D.hoyISO()}.csv`, D.exportarEventosCSV(datos), 'text/csv'); },
+
   async borrarVisita() {
     if (!confirm('¿Borrar esta visita? No se puede deshacer.')) return;
     D.borrarVisita(datos, borrador.id);
@@ -1708,11 +1814,14 @@ function pintar() {
   const [nombre, id] = location.hash.slice(1).split('/');
   const main = document.getElementById('pantalla');
   let html;
-  const enFormulario = nombre === 'visita' || nombre === 'vender';
+  const enFormulario = nombre === 'visita' || nombre === 'vender' || nombre === 'evento';
   if (enFormulario) {
     const clave = location.hash;
     if (!borrador || borrador.ruta !== clave) {
-      if (nombre === 'vender') {
+      if (nombre === 'evento') {
+        borrador = borradorEvento(id);
+        if (id && borrador.nueva) { location.hash = '#hoy'; return; }
+      } else if (nombre === 'vender') {
         const origen = D.porId(datos.visitas, id);
         if (!origen || !origen.pendiente) { location.hash = '#pendientes'; return; }
         borrador = borradorDeVenta(origen);
@@ -1725,7 +1834,7 @@ function pintar() {
       }
       borrador.ruta = clave;
     }
-    html = pantallaVisita();
+    html = nombre === 'evento' ? pantallaEvento() : pantallaVisita();
   } else {
     borrador = null;
     const pantallas = { hoy: pantallaHoy, agenda: pantallaAgenda, pendientes: pantallaPendientes, consultar: pantallaConsultar, ajustes: pantallaAjustes, reunion: pantallaReunion };
@@ -1748,7 +1857,7 @@ function repintar() {
 
 window.addEventListener('hashchange', (e) => {
   const anterior = new URL(e.oldURL).hash || '#hoy';
-  if (!anterior.startsWith('#visita') && !anterior.startsWith('#vender')) rutaAnterior = anterior;
+  if (!anterior.startsWith('#visita') && !anterior.startsWith('#vender') && !anterior.startsWith('#evento')) rutaAnterior = anterior;
   pintar();
   window.scrollTo(0, 0);
 });

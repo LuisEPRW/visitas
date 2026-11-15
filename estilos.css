@@ -449,3 +449,7 @@ a.boton { display: flex; align-items: center; justify-content: center; text-deco
 .eleccion-cliente button { min-height: 52px; font-size: 17px; }
 .eleccion-cliente button.activo { background: var(--primario); border-color: var(--primario); color: #fff; }
 .etiqueta-nuevo { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 10px; background: var(--primario); color: #fff; font-size: 13px; font-weight: 600; }
+
+/* Ferias y eventos */
+.etiqueta.evento { background: #fbf3dc; color: #7a5a00; }
+a.visita.evento { border-left-color: #d7a51e; }

@@ -90,6 +90,7 @@ function datosVacios() {
     visitas: [],
     agenda: [],
     reuniones: [],
+    eventos: [],
     ajustes: { salida: null, ultimaCopia: null },
   };
 }
@@ -314,6 +315,46 @@ function exportarCSV(datos, visitas) {
     }
   }
   return '﻿' + filas.map((f) => f.map(celdaCSV).join(';')).join('\r\n') + '\r\n';
+}
+
+// ---------- Ferias y eventos (petición de Luis, 15/11) ----------
+// Botellas que Luis saca de la bodega para ferias, showrooms o eventos de la
+// D.O. NO son ventas: van aparte para justificar a fin de año dónde se usaron.
+
+const TIPOS_EVENTO = ['Feria', 'Showroom', 'Evento D.O.', 'Cata', 'Otro'];
+
+function eventosEntre(datos, desde, hasta) {
+  return (datos.eventos || []).filter((e) => (!desde || e.fecha >= desde) && (!hasta || e.fecha <= hasta))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creadoEl || '').localeCompare(a.creadoEl || ''));
+}
+
+// Total de botellas y cajas por vino (y añada) de una lista de eventos.
+function gastoEventos(datos, eventos) {
+  const porVino = new Map();
+  let botellas = 0; let cajas = 0;
+  for (const e of eventos) {
+    for (const l of e.lineas || []) {
+      const clave = nombreConAnada(datos, l);
+      const x = porVino.get(clave) || { nombre: clave, botellas: 0, cajas: 0 };
+      if (l.unidad === 'cajas') { x.cajas += Number(l.cantidad) || 0; cajas += Number(l.cantidad) || 0; }
+      else { x.botellas += Number(l.cantidad) || 0; botellas += Number(l.cantidad) || 0; }
+      porVino.set(clave, x);
+    }
+  }
+  return { botellas, cajas, porVino: [...porVino.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')) };
+}
+
+// Una fila por vino de cada evento, para sumarlas en Excel.
+function exportarEventosCSV(datos, eventos) {
+  const filas = [['Fecha', 'Evento', 'Tipo', 'Lugar', 'Vino', 'Añada', 'Cantidad', 'Unidad', 'Nota']];
+  for (const e of [...(eventos || eventosEntre(datos))].reverse()) {
+    const lineas = e.lineas && e.lineas.length ? e.lineas : [null];
+    for (const l of lineas) {
+      filas.push([fechaES(e.fecha), e.nombre, e.tipo, e.lugar, l ? nombreVino(datos, l.vinoId) : '', l ? l.anada || '' : '',
+        l ? l.cantidad : '', l ? (l.unidad === 'cajas' ? 'cajas' : 'botellas') : '', e.nota]);
+    }
+  }
+  return '\ufeff' + filas.map((f) => f.map(celdaCSV).join(';')).join('\r\n') + '\r\n';
 }
 
 // ---------- Reunión bimestral con Dirección ----------
@@ -699,6 +740,7 @@ function leerCopia(texto) {
     visitas: d.visitas,
     agenda: d.agenda,
     reuniones: Array.isArray(d.reuniones) ? d.reuniones : [], // las copias antiguas no tienen reuniones
+    eventos: Array.isArray(d.eventos) ? d.eventos : [], // ni ferias y eventos
     ajustes: Object.assign({ salida: null, ultimaCopia: null }, d.ajustes),
   };
 }
@@ -944,5 +986,6 @@ const D = {
   posponerPendiente, esPaquete, aplicarPaquete, agendaDelDia, agendaProxima, agendaPasada,
   bimestreDe, bimestreMover, bimestreLimites, bimestreNombre, FICHAS_REUNION, RESPONSABLE, MARCAS, INDICADORES, marcaDeVino, reunionVacia, reunionDe,
   contactosDistribuidor, resumenReunion, exportarReunion, numeroES, variacion,
+  TIPOS_EVENTO, eventosEntre, gastoEventos, exportarEventosCSV,
 };
 if (typeof module !== 'undefined') module.exports = D;
