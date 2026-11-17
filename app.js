@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.19';
+const VERSION_APP = '1.20';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -894,7 +894,7 @@ function pantallaReunion() {
       <h2>Sale solo de las visitas</h2>
       <p>${t.visitas} visitas: ${t.vendido || 0} con venta, ${t.pendiente || 0} pendientes y ${t.sin_interes || 0} sin interés. Vendido: ${t.botellas} botellas y ${t.cajas} cajas.</p>
       <p>Puntos de venta nuevos: ${z.clientesNuevos.length}${z.clientesNuevos.length ? ` (${esc(z.clientesNuevos.map((c) => c.nombre).join(', '))})` : ''}.</p>
-      <p>Muestras: ${z.unidadesMuestras} en ${z.conMuestras.length} visitas. Oportunidades abiertas ahora: ${z.abiertas.length}.</p>
+      <p>Muestras: ${z.unidadesMuestras} en ${z.conMuestras.length} visitas${z.eventos.length ? ` y ${esc(D.unidadesTexto(z.eventos.flatMap((e) => e.lineas || [])))} en ${z.eventos.length} ${z.eventos.length === 1 ? 'feria o evento' : 'ferias y eventos'}` : ''}. Oportunidades abiertas ahora: ${z.abiertas.length}.</p>
       <p>Distribuidores potenciales: ${z.nuevosPotenciales.length}. Importadores contactados: ${z.importadoresContactados.length}.</p>
       <p class="gris pequeno">Las ventas en euros, los pedidos y los objetivos no los sabe la app: si te los pasa la oficina, apúntalos tú en cada apartado.</p>
     </section>

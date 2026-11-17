@@ -535,13 +535,18 @@ function resumenReunion(datos, periodo, hoy) {
     (enPeriodo(d.ultimoContacto) || visitas.some((v) => v.distribuidorId === d.id) ||
      datos.agenda.some((s) => s.distribuidorId === d.id && enPeriodo(s.fecha) && s.fecha <= hoy)));
   const unidadesMuestras = conMuestras.reduce((t, v) => t + v.muestras.reduce((u, l) => u + (Number(l.cantidad) || 0), 0), 0);
+  // Ferias y eventos del bimestre: cuentan como muestras utilizadas (no como venta).
+  const eventos = eventosEntre(datos, desde, hasta);
+  const lineasMuestras = [...conMuestras.flatMap((v) => v.muestras), ...eventos.flatMap((e) => e.lineas || [])];
+  const hayCajas = lineasMuestras.some((l) => l.unidad === 'cajas' && Number(l.cantidad));
+  const muestrasTotal = hayCajas ? unidades(lineasMuestras) : lineasMuestras.reduce((t, l) => t + (Number(l.cantidad) || 0), 0);
   // Distribuidores que han vendido cada marca en el bimestre (según las visitas).
   const activosPorMarca = {};
   for (const m of MARCAS) activosPorMarca[m] = new Set();
   for (const v of visitas) for (const l of v.lineas || []) activosPorMarca[marcaDeVino(nombreVino(datos, l.vinoId))].add(v.distribuidorId);
   for (const m of MARCAS) activosPorMarca[m] = activosPorMarca[m].size;
   return { desde, hasta, visitas, clientesNuevos, conMuestras, abiertas, distribuidores, potenciales, nuevosPotenciales,
-    importadoresContactados, unidadesMuestras, activosPorMarca, totales: totales(datos, visitas) };
+    importadoresContactados, unidadesMuestras, eventos, muestrasTotal, activosPorMarca, totales: totales(datos, visitas) };
 }
 
 // Números para el Excel en español: coma decimal. Vacío si no hay número.
@@ -598,15 +603,15 @@ function exportarReunion(datos, periodo, hoy) {
   bloque('Mensaje principal del bimestre', ['Mensaje principal del bimestre'], [[r.mensaje]]);
   const t = z.totales;
   bloque('Datos de la app de visitas', ['Visitas', 'Con venta', 'Pendientes', 'Sin interés', 'Vendido', 'Nuevos puntos de venta', 'Oportunidades abiertas',
-    'Nuevos distribuidores potenciales', 'Importadores contactados', 'Muestras (visitas)', 'Muestras (unidades)'],
+    'Nuevos distribuidores potenciales', 'Importadores contactados', 'Muestras (visitas)', 'Muestras (unidades)', 'Ferias y eventos', 'Muestras + eventos (total)'],
     [[t.visitas, t.vendido || 0, t.pendiente || 0, t.sin_interes || 0, `${t.botellas} bot. + ${t.cajas} cajas`, z.clientesNuevos.length, z.abiertas.length,
-      z.nuevosPotenciales.length, z.importadoresContactados.length, z.conMuestras.length, z.unidadesMuestras]]);
+      z.nuevosPotenciales.length, z.importadoresContactados.length, z.conMuestras.length, z.unidadesMuestras, z.eventos.length, z.muestrasTotal]]);
 
   // 1. Cuadro de mando: lo que la app cuenta sola + lo que apunte Luis.
   const actuales = {
     'Nuevos puntos de venta': z.clientesNuevos.length, 'Oportunidades abiertas': z.abiertas.length,
     'Nuevos distribuidores potenciales': z.nuevosPotenciales.length, 'Importadores contactados': z.importadoresContactados.length,
-    'Muestras utilizadas / enviadas': z.unidadesMuestras,
+    'Muestras utilizadas / enviadas': z.muestrasTotal,
   };
   bloque('1. Cuadro de mando Comercial',
     ['Indicador', 'Actual', 'Informe anterior', 'Objetivo', 'Variación / avance', 'Previsión', 'Gap al objetivo', 'Estado', 'Qué explica el dato', 'Acción comercial', 'Responsable', 'Plazo'],
@@ -673,7 +678,9 @@ function exportarReunion(datos, periodo, hoy) {
           const g = v.segMuestras || {};
           return [g.seguimiento || '', g.resultado || '', numeroES(g.potencial), g.proximoPaso || '', g.fecha ? fechaES(g.fecha) : ''];
         })(), RESPONSABLE];
-    }).concat(filasFicha('muestras')));
+    }).concat([...z.eventos].reverse().map((e) => [`${e.nombre} (${(e.tipo || 'evento').toLowerCase()})`, e.lugar || '',
+      (e.lineas || []).map((l) => nombreConAnada(datos, l)).join(', '), unidades(e.lineas || []), fechaES(e.fecha),
+      [e.tipo, e.nota].filter(Boolean).join(' · '), '', '', '', '', '', RESPONSABLE]), filasFicha('muestras')));
 
   bloque('6. Evolución de cada marca y previsión de ventas',
     ['Marca', 'Venta actual €', 'Venta anterior €', 'Variación %', 'Objetivo €', 'Gap €', 'Previsión próximo bimestre €', 'Previsión cierre año €',
@@ -986,6 +993,6 @@ const D = {
   posponerPendiente, esPaquete, aplicarPaquete, agendaDelDia, agendaProxima, agendaPasada,
   bimestreDe, bimestreMover, bimestreLimites, bimestreNombre, FICHAS_REUNION, RESPONSABLE, MARCAS, INDICADORES, marcaDeVino, reunionVacia, reunionDe,
   contactosDistribuidor, resumenReunion, exportarReunion, numeroES, variacion,
-  TIPOS_EVENTO, eventosEntre, gastoEventos, exportarEventosCSV,
+  TIPOS_EVENTO, eventosEntre, gastoEventos, exportarEventosCSV, unidadesTexto: unidades,
 };
 if (typeof module !== 'undefined') module.exports = D;
