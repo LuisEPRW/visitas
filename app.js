@@ -1,7 +1,7 @@
 'use strict';
 // Pantallas de la app. La lógica de datos está en datos.js (objeto global D).
 
-const VERSION_APP = '1.20';
+const VERSION_APP = '1.21';
 const TIPOS_CLIENTE = ['Restaurante', 'Bar', 'Tienda / vinoteca', 'Hotel', 'Otro'];
 const PROVINCIAS = ['A Coruña', 'Lugo', 'Ourense', 'Pontevedra', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias',
   'Ávila', 'Badajoz', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba',
@@ -605,10 +605,12 @@ function resultadosCliente() {
 
 // Arriba del cliente, dos botones (petición de Luis, 11/11): «Cliente» (ya lo
 // era: se elige de la lista) o «Nuevo cliente» (queda como nuevo solo).
+// Debajo, el atajo a ferias y eventos (Luis lo buscaba aquí, audio del 18/11).
 function eleccionCliente(esNuevo) {
   return `<div class="eleccion-cliente">
     <button type="button" class="${esNuevo ? '' : 'activo'}"${esNuevo ? ' data-accion="cancelarClienteNuevo"' : ''}>Cliente</button>
     <button type="button" class="${esNuevo ? 'activo' : ''}"${esNuevo ? '' : ' data-accion="crearCliente"'}>Nuevo cliente</button>
+    <a class="boton evento" href="#evento">Feria, showroom o evento (botellas gastadas, no es venta)</a>
   </div>`;
 }
 

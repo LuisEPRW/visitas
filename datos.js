@@ -321,7 +321,7 @@ function exportarCSV(datos, visitas) {
 // Botellas que Luis saca de la bodega para ferias, showrooms o eventos de la
 // D.O. NO son ventas: van aparte para justificar a fin de año dónde se usaron.
 
-const TIPOS_EVENTO = ['Feria', 'Showroom', 'Evento D.O.', 'Cata', 'Otro'];
+const TIPOS_EVENTO = ['Feria', 'Showroom', 'Evento D.O.', 'Cata', 'Fiesta / aniversario', 'Otro'];
 
 function eventosEntre(datos, desde, hasta) {
   return (datos.eventos || []).filter((e) => (!desde || e.fecha >= desde) && (!hasta || e.fecha <= hasta))

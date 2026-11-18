@@ -448,6 +448,7 @@ a.boton { display: flex; align-items: center; justify-content: center; text-deco
 .eleccion-cliente { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .eleccion-cliente button { min-height: 52px; font-size: 17px; }
 .eleccion-cliente button.activo { background: var(--primario); border-color: var(--primario); color: #fff; }
+.eleccion-cliente a.boton.evento { grid-column: 1 / -1; min-height: 44px; font-size: 15px; background: #fbf3dc; color: #7a5a00; border: 1px solid #d7a51e; border-radius: 10px; }
 .etiqueta-nuevo { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 10px; background: var(--primario); color: #fff; font-size: 13px; font-weight: 600; }
 
 /* Ferias y eventos */
